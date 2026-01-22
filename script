@@ -103,7 +103,7 @@ local mainContainer = createInstance("Frame", {
 -- Apply UIScale for mobile responsiveness
 if isMobile then
     createInstance("UIScale", {
-        Scale = 0.5,
+        Scale = 0.7,
         Parent = mainContainer
     })
 end
