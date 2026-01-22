@@ -1,0 +1,2684 @@
+-- ========================================
+-- VAULT SPEED CONTROLLER - FREE VERSION
+-- ========================================
+
+-- Services
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+
+-- Player References
+local localPlayer = Players.LocalPlayer
+local playerCharacter
+local humanoidRootPart
+local humanoid
+local playerBackpack = localPlayer:FindFirstChild("Backpack")
+
+-- ========================================
+-- CHARACTER SETUP
+-- ========================================
+local function initializeCharacter(character)
+    playerCharacter = character
+    humanoidRootPart = character:WaitForChild("HumanoidRootPart")
+    humanoid = character:WaitForChild("Humanoid")
+end
+
+if localPlayer.Character then
+    initializeCharacter(localPlayer.Character)
+end
+
+localPlayer.CharacterAdded:Connect(initializeCharacter)
+
+-- ========================================
+-- UTILITY: INSTANCE CREATOR
+-- ========================================
+local function createInstance(className, properties)
+    local instance = Instance.new(className)
+    for property, value in pairs(properties) do
+        if property ~= "Parent" then
+            instance[property] = value
+        end
+    end
+    if properties.Parent then
+        instance.Parent = properties.Parent
+    end
+    return instance
+end
+
+-- ========================================
+-- MODERN COLOR PALETTE
+-- ========================================
+local ColorTheme = {
+    -- Background Colors
+    primaryBackground = Color3.fromRGB(13, 13, 20),
+    secondaryBackground = Color3.fromRGB(20, 20, 32),
+    
+    -- Accent Colors
+    accentPurple = Color3.fromRGB(147, 51, 234),
+    accentBlue = Color3.fromRGB(59, 130, 246),
+    accentCyan = Color3.fromRGB(34, 197, 238),
+    accentGreen = Color3.fromRGB(34, 197, 94),
+    
+    -- State Colors
+    activeGreen = Color3.fromRGB(34, 197, 94),
+    inactiveRed = Color3.fromRGB(239, 68, 68),
+    
+    -- Text Colors
+    primaryText = Color3.fromRGB(248, 250, 252),
+    secondaryText = Color3.fromRGB(148, 163, 184),
+    
+    -- Input Colors
+    normalSpeedBg = Color3.fromRGB(25, 32, 50),
+    stealSpeedBg = Color3.fromRGB(42, 25, 50),
+    jumpPowerBg = Color3.fromRGB(25, 42, 50),
+    
+    -- Slider Colors
+    sliderTrack = Color3.fromRGB(35, 38, 48),
+}
+
+-- ========================================
+-- GUI CREATION
+-- ========================================
+-- Mobile Detection and Responsive Sizing
+local isMobile = UserInputService.TouchEnabled
+local desktopSize = UDim2.new(0, 340, 0, 324)
+local mobileSize = UDim2.new(0, 180, 0, 280)
+local containerSize = isMobile and mobileSize or desktopSize
+
+local screenGui = createInstance("ScreenGui", {
+    Name = "ModernSpeedController",
+    ResetOnSpawn = false,
+    ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+    Parent = localPlayer:WaitForChild("PlayerGui")
+})
+
+-- Main Container - Vertical stacked layout
+local mainContainer = createInstance("Frame", {
+    Name = "MainContainer",
+    Size = containerSize,
+    Position = isMobile and UDim2.new(0.5, -90, 0.1, 0) or UDim2.new(0.5, -170, 0.1, 0),
+    BackgroundTransparency = 1,
+    Active = true,
+    Draggable = false,
+    Parent = screenGui
+})
+
+-- Drag Borders (All sides for dragging)
+local topBorder = createInstance("Frame", {
+    Name = "TopBorder",
+    Size = UDim2.new(1, 0, 0, 30),
+    Position = UDim2.new(0, 0, 0, 0),
+    BackgroundTransparency = 1,
+    Active = true,
+    Draggable = true,
+    ZIndex = 5,
+    Parent = mainContainer
+})
+
+local leftBorder = createInstance("Frame", {
+    Name = "LeftBorder",
+    Size = UDim2.new(0, 20, 1, 0),
+    Position = UDim2.new(0, 0, 0, 0),
+    BackgroundTransparency = 1,
+    Active = true,
+    Draggable = true,
+    ZIndex = 5,
+    Parent = mainContainer
+})
+
+local rightBorder = createInstance("Frame", {
+    Name = "RightBorder",
+    Size = UDim2.new(0, 20, 1, 0),
+    Position = UDim2.new(1, -20, 0, 0),
+    BackgroundTransparency = 1,
+    Active = true,
+    Draggable = true,
+    ZIndex = 5,
+    Parent = mainContainer
+})
+
+local bottomBorder = createInstance("Frame", {
+    Name = "BottomBorder",
+    Size = UDim2.new(1, 0, 0, 20),
+    Position = UDim2.new(0, 0, 1, -20),
+    BackgroundTransparency = 1,
+    Active = true,
+    Draggable = true,
+    ZIndex = 5,
+    Parent = mainContainer
+})
+
+-- Sync borders
+topBorder:GetPropertyChangedSignal("Position"):Connect(function()
+    local offset = topBorder.Position - UDim2.new(0, 0, 0, 0)
+    mainContainer.Position = mainContainer.Position + offset
+    topBorder.Position = UDim2.new(0, 0, 0, 0)
+end)
+
+leftBorder:GetPropertyChangedSignal("Position"):Connect(function()
+    local offset = leftBorder.Position - UDim2.new(0, 0, 0, 0)
+    mainContainer.Position = mainContainer.Position + offset
+    leftBorder.Position = UDim2.new(0, 0, 0, 0)
+end)
+
+rightBorder:GetPropertyChangedSignal("Position"):Connect(function()
+    local offset = rightBorder.Position - UDim2.new(1, -20, 0, 0)
+    mainContainer.Position = mainContainer.Position + offset
+    rightBorder.Position = UDim2.new(1, -20, 0, 0)
+end)
+
+bottomBorder:GetPropertyChangedSignal("Position"):Connect(function()
+    local offset = bottomBorder.Position - UDim2.new(0, 0, 1, -20)
+    mainContainer.Position = mainContainer.Position + offset
+    bottomBorder.Position = UDim2.new(0, 0, 1, -20)
+end)
+
+-- Background Panel
+local backgroundPanel = createInstance("Frame", {
+    Name = "BackgroundPanel",
+    Size = UDim2.new(1, 0, 1, 0),
+    BackgroundColor3 = ColorTheme.primaryBackground,
+    BackgroundTransparency = 0.05,
+    BorderSizePixel = 0,
+    Parent = mainContainer
+})
+
+createInstance("UICorner", {
+    CornerRadius = UDim.new(0, 10),
+    Parent = backgroundPanel
+})
+
+-- FREE VERSION INDICATOR - Glowy Green Text at Bottom
+local freeVersionIndicator = createInstance("TextLabel", {
+    Name = "FreeVersionIndicator",
+    Size = UDim2.new(0, 120, 0, 15),
+    Position = UDim2.new(0.5, -60, 1, -20),
+    BackgroundTransparency = 1,
+    Text = "* VAULT FREE",
+    TextColor3 = Color3.fromRGB(0, 255, 100),
+    TextSize = 10,
+    Font = Enum.Font.GothamBold,
+    TextXAlignment = Enum.TextXAlignment.Center,
+    Parent = backgroundPanel
+})
+
+-- Glassmorphism Effect
+local glassEffect = createInstance("Frame", {
+    Name = "GlassEffect",
+    Size = UDim2.new(1, -4, 1, -4),
+    Position = UDim2.new(0, 2, 0, 2),
+    BackgroundColor3 = ColorTheme.secondaryBackground,
+    BackgroundTransparency = 0.3,
+    BorderSizePixel = 0,
+    Parent = mainContainer
+})
+
+createInstance("UICorner", {
+    CornerRadius = UDim.new(0, 8),
+    Parent = glassEffect
+})
+
+-- Animated Border Stroke
+local animatedBorder = createInstance("UIStroke", {
+    Name = "AnimatedBorder",
+    Color = Color3.fromRGB(255, 255, 255),
+    Thickness = 2,
+    Transparency = 0.3,
+    ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+    Parent = backgroundPanel
+})
+
+local borderGradient = createInstance("UIGradient", {
+    Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(0, 0, 0)),
+        ColorSequenceKeypoint.new(0.2, Color3.fromRGB(255, 255, 255)),
+        ColorSequenceKeypoint.new(0.8, Color3.fromRGB(255, 255, 255)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 0, 0))
+    }),
+    Rotation = 0,
+    Parent = animatedBorder
+})
+
+-- ========================================
+-- HEADER SECTION
+-- ========================================
+
+-- Top Bar with VAULT HUB text
+local topBar = createInstance("Frame", {
+    Name = "TopBar",
+    Size = UDim2.new(1, 0, 0, 25),
+    Position = UDim2.new(0, 0, 0, 330),
+    BackgroundColor3 = Color3.fromRGB(20, 20, 35),
+    BackgroundTransparency = 0.15,
+    BorderSizePixel = 0,
+    Parent = mainContainer,
+    ZIndex = 10
+})
+
+createInstance("UICorner", {
+    CornerRadius = UDim.new(0, 8),
+    Parent = topBar
+})
+
+-- Top Bar Stroke with Animation
+local topBarStroke = createInstance("UIStroke", {
+    Color = Color3.fromRGB(255, 255, 255),
+    Thickness = 1.5,
+    Transparency = 0.3,
+    Parent = topBar
+})
+
+local topBarGradient = createInstance("UIGradient", {
+    Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(0, 0, 0)),
+        ColorSequenceKeypoint.new(0.2, Color3.fromRGB(255, 255, 255)),
+        ColorSequenceKeypoint.new(0.8, Color3.fromRGB(255, 255, 255)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 0, 0))
+    }),
+    Rotation = 0,
+    Parent = topBarStroke
+})
+
+-- VAULT HUB Text on right side of top bar
+local vaultHubLabel = createInstance("TextLabel", {
+    Name = "VaultHubLabel",
+    Size = UDim2.new(0, 100, 0, 25),
+    Position = UDim2.new(1, -340, 0, 0),
+    BackgroundTransparency = 1,
+    Text = "VAULT HUB",
+    TextColor3 = Color3.fromRGB(255, 255, 255),
+    TextSize = 12,
+    Font = Enum.Font.GothamBold,
+    TextXAlignment = Enum.TextXAlignment.Center,
+    TextYAlignment = Enum.TextYAlignment.Center,
+    Parent = topBar,
+    ZIndex = 11
+})
+
+-- VAULT HUB Text on right side of top bar
+local DiscordLabel = createInstance("TextLabel", {
+    Name = "DiscordLabel",
+    Size = UDim2.new(0, 100, 0, 25),
+    Position = UDim2.new(1, -230, 0, 0),
+    BackgroundTransparency = 1,
+    Text = "discord.gg/tcEeuPtKDR",
+    TextColor3 = Color3.fromRGB(255, 255, 255),
+    TextSize = 12,
+    Font = Enum.Font.GothamBold,
+    TextXAlignment = Enum.TextXAlignment.Center,
+    TextYAlignment = Enum.TextYAlignment.Center,
+    Parent = topBar,
+    ZIndex = 11
+})
+
+
+-- FPS Display
+local fpsLabel = createInstance("TextLabel", {
+    Name = "FpsLabel",
+    Size = UDim2.new(0, 45, 0, 25),
+    Position = UDim2.new(0, 237, 0, 0),
+    BackgroundTransparency = 1,
+    Text = "FPS: 60",
+    TextColor3 = Color3.fromRGB(255, 255, 255),
+    TextSize = 10,
+    Font = Enum.Font.GothamBold,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    TextYAlignment = Enum.TextYAlignment.Center,
+    Parent = topBar,
+    ZIndex = 11
+})
+
+-- Ping Display
+local pingLabel = createInstance("TextLabel", {
+    Name = "PingLabel",
+    Size = UDim2.new(0, 50, 0, 25),
+    Position = UDim2.new(0, 280, 0, 0),
+    BackgroundTransparency = 1,
+    Text = "Ping: 0ms",
+    TextColor3 = Color3.fromRGB(255, 255, 255),
+    TextSize = 10,
+    Font = Enum.Font.GothamBold,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    TextYAlignment = Enum.TextYAlignment.Center,
+    Parent = topBar,
+    ZIndex = 11
+})
+
+local headerTitle = createInstance("TextLabel", {
+    Name = "HeaderTitle",
+    Size = UDim2.new(1, -80, 0, 25),
+    Position = UDim2.new(0, 12, 0, 10),
+    BackgroundTransparency = 1,
+    Text = "Vault Duels V1",
+    TextColor3 = ColorTheme.primaryText,
+    TextSize = 14,
+    Font = Enum.Font.GothamBold,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    Parent = mainContainer
+})
+
+local headerSubtitle = createInstance("TextLabel", {
+    Name = "HeaderSubtitle",
+    Size = UDim2.new(1, -80, 0, 12),
+    Position = UDim2.new(0, 12, 0, 35),
+    BackgroundTransparency = 1,
+    Text = "Advanced Movement Control",
+    TextColor3 = ColorTheme.secondaryText,
+    TextSize = 8,
+    Font = Enum.Font.Gotham,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    Parent = mainContainer
+})
+
+-- Close Button
+local closeButton = createInstance("TextButton", {
+    Name = "CloseButton",
+    Size = UDim2.new(0, 28, 0, 28),
+    Position = UDim2.new(1, -40, 0, 10),
+    BackgroundColor3 = ColorTheme.inactiveRed,
+    BackgroundTransparency = 0.3,
+    Text = "",
+    TextColor3 = ColorTheme.primaryText,
+    TextSize = 24,
+    Font = Enum.Font.GothamBold,
+    BorderSizePixel = 0,
+    AutoButtonColor = false,
+    ZIndex = 20,
+    Parent = mainContainer
+})
+
+createInstance("UICorner", {
+    CornerRadius = UDim.new(0, 8),
+    Parent = closeButton
+})
+
+createInstance("UIStroke", {
+    Color = ColorTheme.accentPurple,
+    Thickness = 1.5,
+    Transparency = 0.4,
+    Parent = closeButton
+})
+
+-- Background for collapsed buttons
+local collapsedButtonsBackground = createInstance("Frame", {
+    Name = "CollapsedButtonsBackground",
+    Size = UDim2.new(0, 270, 0, 45),
+    Position = UDim2.new(0.5, -135, 0.1, 0),
+    BackgroundColor3 = ColorTheme.primaryBackground,
+    BackgroundTransparency = 0.05,
+    BorderSizePixel = 0,
+    Visible = false,
+    Active = true,
+    Draggable = true,
+    ZIndex = 5,
+    Parent = screenGui
+})
+
+createInstance("UICorner", {
+    CornerRadius = UDim.new(0, 10),
+    Parent = collapsedButtonsBackground
+})
+
+local collapsedBgStroke = createInstance("UIStroke", {
+    Color = Color3.fromRGB(255, 255, 255),
+    Thickness = 1.5,
+    Transparency = 0.4,
+    ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+    Parent = collapsedButtonsBackground
+})
+
+local collapsedBgGradient = createInstance("UIGradient", {
+    Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(0, 0, 0)),
+        ColorSequenceKeypoint.new(0.2, Color3.fromRGB(255, 255, 255)),
+        ColorSequenceKeypoint.new(0.8, Color3.fromRGB(255, 255, 255)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 0, 0))
+    }),
+    Rotation = 0,
+    Parent = collapsedBgStroke
+})
+
+-- Collapsed Button (Rectangle with logo on left)
+local collapsedButton = createInstance("TextButton", {
+    Name = "CollapsedButton",
+    Size = UDim2.new(0, 70, 0, 35),
+    Position = UDim2.new(0, 2, 0, 5),
+    BackgroundColor3 = ColorTheme.primaryBackground,
+    BackgroundTransparency = 0.1,
+    Text = "VaultV1",
+    TextColor3 = Color3.fromRGB(248, 250, 252),
+    TextSize = 10,
+    Font = Enum.Font.GothamBold,
+    BorderSizePixel = 0,
+    AutoButtonColor = false,
+    Visible = false,
+    Draggable = false,
+    ZIndex = 7,
+    Parent = collapsedButtonsBackground
+})
+
+createInstance("UICorner", {
+    CornerRadius = UDim.new(0, 8),
+    Parent = collapsedButton
+})
+
+-- ========================================
+-- CONTENT AREA - Vertical stacked rows
+-- ========================================
+local contentContainer = createInstance("Frame", {
+    Name = "ContentContainer",
+    Size = UDim2.new(1, -24, 0, 192),
+    Position = UDim2.new(0, 12, 0, 60),
+    BackgroundTransparency = 1,
+    ClipsDescendants = false,
+    Parent = mainContainer
+})
+
+-- ========================================
+-- ROW 1: NORMAL SPEED
+-- ========================================
+local row1 = createInstance("Frame", {
+    Name = "Row1",
+    Size = UDim2.new(1, 0, 0, 32),
+    Position = UDim2.new(0, 0, 0, 0),
+    BackgroundTransparency = 1,
+    Parent = contentContainer
+})
+
+local label1 = createInstance("TextLabel", {
+    Name = "Label",
+    Size = UDim2.new(0, 40, 0, 20),
+    Position = UDim2.new(0, 0, 0.5, -10),
+    BackgroundTransparency = 1,
+    Text = "SPEED",
+    TextColor3 = ColorTheme.primaryText,
+    TextSize = 10,
+    Font = Enum.Font.GothamBold,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    Parent = row1
+})
+
+local normalSpeedSliderBg = createInstance("Frame", {
+    Name = "Slider",
+    Size = UDim2.new(0, 70, 0, 6),
+    Position = UDim2.new(0, 42, 0.5, -3),
+    BackgroundColor3 = ColorTheme.sliderTrack,
+    BorderSizePixel = 0,
+    Parent = row1
+})
+createInstance("UICorner", {CornerRadius = UDim.new(1, 0), Parent = normalSpeedSliderBg})
+
+local normalSpeedSliderFill = createInstance("Frame", {
+    Name = "Fill",
+    Size = UDim2.new(0.55, 0, 1, 0),
+    BackgroundColor3 = ColorTheme.accentBlue,
+    BorderSizePixel = 0,
+    Parent = normalSpeedSliderBg
+})
+createInstance("UICorner", {CornerRadius = UDim.new(1, 0), Parent = normalSpeedSliderFill})
+
+local normalSpeedHandle = createInstance("Frame", {
+    Name = "Handle",
+    Size = UDim2.new(0, 12, 0, 12),
+    Position = UDim2.new(0.55, -6, 0.5, -6),
+    BackgroundColor3 = ColorTheme.accentBlue,
+    BorderSizePixel = 0,
+    ZIndex = 15,
+    Parent = normalSpeedSliderBg
+})
+createInstance("UICorner", {CornerRadius = UDim.new(1, 0), Parent = normalSpeedHandle})
+createInstance("UIStroke", {Color = ColorTheme.primaryBackground, Thickness = 1, Parent = normalSpeedHandle})
+
+local normalSpeedInput = createInstance("TextBox", {
+    Name = "Input",
+    Size = UDim2.new(0, 45, 0, 22),
+    Position = UDim2.new(0, 130, 0.5, -11),
+    BackgroundColor3 = ColorTheme.normalSpeedBg,
+    Text = "55",
+    TextColor3 = ColorTheme.primaryText,
+    TextSize = 10,
+    Font = Enum.Font.GothamBold,
+    BorderSizePixel = 0,
+    Parent = row1
+})
+createInstance("UICorner", {CornerRadius = UDim.new(0, 4), Parent = normalSpeedInput})
+createInstance("UIStroke", {Color = ColorTheme.accentBlue, Thickness = 1, Transparency = 0.6, Parent = normalSpeedInput})
+
+local speedKeybindButton = createInstance("TextButton", {
+    Name = "KeybindButton",
+    Size = UDim2.new(0, 40, 0, 22),
+    Position = UDim2.new(0, 178, 0.5, -11),
+    BackgroundColor3 = Color3.fromRGB(45, 45, 60),
+    BackgroundTransparency = 0.3,
+    Text = "NONE",
+    TextColor3 = ColorTheme.secondaryText,
+    TextSize = 7,
+    Font = Enum.Font.GothamBold,
+    BorderSizePixel = 0,
+    AutoButtonColor = false,
+    Parent = row1
+})
+createInstance("UICorner", {CornerRadius = UDim.new(0, 4), Parent = speedKeybindButton})
+createInstance("UIStroke", {Color = Color3.fromRGB(100, 100, 120), Thickness = 1, Transparency = 0.5, Parent = speedKeybindButton})
+
+local speedToggleButton = createInstance("TextButton", {
+    Name = "Toggle",
+    Size = UDim2.new(0, 40, 0, 22),
+    Position = UDim2.new(0, 281, 0.5, -11),
+    BackgroundColor3 = ColorTheme.inactiveRed,
+    BackgroundTransparency = 0.2,
+    Text = "OFF",
+    TextColor3 = ColorTheme.primaryText,
+    TextSize = 8,
+    Font = Enum.Font.GothamBold,
+    BorderSizePixel = 0,
+    AutoButtonColor = false,
+    Parent = row1
+})
+createInstance("UICorner", {CornerRadius = UDim.new(0, 4), Parent = speedToggleButton})
+createInstance("UIStroke", {Color = ColorTheme.inactiveRed, Thickness = 1, Transparency = 0.4, Parent = speedToggleButton})
+
+-- ========================================
+-- ROW 2: STEAL MODE SPEED
+-- ========================================
+local row2 = createInstance("Frame", {
+    Name = "Row2",
+    Size = UDim2.new(1, 0, 0, 32),
+    Position = UDim2.new(0, 0, 0, 32),
+    BackgroundTransparency = 1,
+    Parent = contentContainer
+})
+
+local label2 = createInstance("TextLabel", {
+    Name = "Label",
+    Size = UDim2.new(0, 40, 0, 20),
+    Position = UDim2.new(0, 0, 0.5, -10),
+    BackgroundTransparency = 1,
+    Text = "STEAL\nSPEED",
+    TextColor3 = ColorTheme.primaryText,
+    TextSize = 9,
+    Font = Enum.Font.GothamBold,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    TextWrapped = true,
+    Parent = row2
+})
+
+local stealSpeedSliderBg = createInstance("Frame", {
+    Name = "Slider",
+    Size = UDim2.new(0, 70, 0, 6),
+    Position = UDim2.new(0, 42, 0.5, -3),
+    BackgroundColor3 = ColorTheme.sliderTrack,
+    BorderSizePixel = 0,
+    Parent = row2
+})
+createInstance("UICorner", {CornerRadius = UDim.new(1, 0), Parent = stealSpeedSliderBg})
+
+local stealSpeedSliderFill = createInstance("Frame", {
+    Name = "Fill",
+    Size = UDim2.new(0.29, 0, 1, 0),
+    BackgroundColor3 = ColorTheme.accentPurple,
+    BorderSizePixel = 0,
+    Parent = stealSpeedSliderBg
+})
+createInstance("UICorner", {CornerRadius = UDim.new(1, 0), Parent = stealSpeedSliderFill})
+
+local stealSpeedHandle = createInstance("Frame", {
+    Name = "Handle",
+    Size = UDim2.new(0, 12, 0, 12),
+    Position = UDim2.new(0.29, -6, 0.5, -6),
+    BackgroundColor3 = ColorTheme.accentPurple,
+    BorderSizePixel = 0,
+    ZIndex = 15,
+    Parent = stealSpeedSliderBg
+})
+createInstance("UICorner", {CornerRadius = UDim.new(1, 0), Parent = stealSpeedHandle})
+createInstance("UIStroke", {Color = ColorTheme.primaryBackground, Thickness = 1, Parent = stealSpeedHandle})
+
+local stealSpeedInput = createInstance("TextBox", {
+    Name = "Input",
+    Size = UDim2.new(0, 45, 0, 22),
+    Position = UDim2.new(0, 130, 0.5, -11),
+    BackgroundColor3 = ColorTheme.stealSpeedBg,
+    Text = "29",
+    TextColor3 = ColorTheme.primaryText,
+    TextSize = 10,
+    Font = Enum.Font.GothamBold,
+    BorderSizePixel = 0,
+    Parent = row2
+})
+createInstance("UICorner", {CornerRadius = UDim.new(0, 4), Parent = stealSpeedInput})
+createInstance("UIStroke", {Color = ColorTheme.accentPurple, Thickness = 1, Transparency = 0.6, Parent = stealSpeedInput})
+
+local stealKeybindButton = createInstance("TextButton", {
+    Name = "KeybindButton",
+    Size = UDim2.new(0, 40, 0, 22),
+    Position = UDim2.new(0, 178, 0.5, -11),
+    BackgroundColor3 = Color3.fromRGB(45, 45, 60),
+    BackgroundTransparency = 0.3,
+    Text = "NONE",
+    TextColor3 = ColorTheme.secondaryText,
+    TextSize = 7,
+    Font = Enum.Font.GothamBold,
+    BorderSizePixel = 0,
+    AutoButtonColor = false,
+    Parent = row2
+})
+createInstance("UICorner", {CornerRadius = UDim.new(0, 4), Parent = stealKeybindButton})
+createInstance("UIStroke", {Color = Color3.fromRGB(100, 100, 120), Thickness = 1, Transparency = 0.5, Parent = stealKeybindButton})
+
+local stealToggleButton = createInstance("TextButton", {
+    Name = "Toggle",
+    Size = UDim2.new(0, 40, 0, 22),
+    Position = UDim2.new(0, 281, 0.5, -11),
+    BackgroundColor3 = ColorTheme.accentPurple,
+    BackgroundTransparency = 0.2,
+    Text = "OFF",
+    TextColor3 = ColorTheme.primaryText,
+    TextSize = 8,
+    Font = Enum.Font.GothamBold,
+    BorderSizePixel = 0,
+    AutoButtonColor = false,
+    Parent = row2
+})
+createInstance("UICorner", {CornerRadius = UDim.new(0, 4), Parent = stealToggleButton})
+createInstance("UIStroke", {Color = ColorTheme.accentPurple, Thickness = 1, Transparency = 0.4, Parent = stealToggleButton})
+-- ========================================
+-- ROW 3: JUMP POWER
+-- ========================================
+local row3 = createInstance("Frame", {
+    Name = "Row3",
+    Size = UDim2.new(1, 0, 0, 32),
+    Position = UDim2.new(0, 0, 0, 64),
+    BackgroundTransparency = 1,
+    Parent = contentContainer
+})
+
+local label3 = createInstance("TextLabel", {
+    Name = "Label",
+    Size = UDim2.new(0, 40, 0, 20),
+    Position = UDim2.new(0, 0, 0.5, -10),
+    BackgroundTransparency = 1,
+    Text = "JUMP",
+    TextColor3 = ColorTheme.primaryText,
+    TextSize = 10,
+    Font = Enum.Font.GothamBold,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    Parent = row3
+})
+
+local jumpSliderBg = createInstance("Frame", {
+    Name = "Slider",
+    Size = UDim2.new(0, 70, 0, 6),
+    Position = UDim2.new(0, 42, 0.5, -3),
+    BackgroundColor3 = ColorTheme.sliderTrack,
+    BorderSizePixel = 0,
+    Parent = row3
+})
+createInstance("UICorner", {CornerRadius = UDim.new(1, 0), Parent = jumpSliderBg})
+
+local jumpSliderFill = createInstance("Frame", {
+    Name = "Fill",
+    Size = UDim2.new(0.65, 0, 1, 0),
+    BackgroundColor3 = ColorTheme.accentCyan,
+    BorderSizePixel = 0,
+    Parent = jumpSliderBg
+})
+createInstance("UICorner", {CornerRadius = UDim.new(1, 0), Parent = jumpSliderFill})
+
+local jumpHandle = createInstance("Frame", {
+    Name = "Handle",
+    Size = UDim2.new(0, 12, 0, 12),
+    Position = UDim2.new(0.65, -6, 0.5, -6),
+    BackgroundColor3 = ColorTheme.accentCyan,
+    BorderSizePixel = 0,
+    ZIndex = 15,
+    Parent = jumpSliderBg
+})
+createInstance("UICorner", {CornerRadius = UDim.new(1, 0), Parent = jumpHandle})
+createInstance("UIStroke", {Color = ColorTheme.primaryBackground, Thickness = 1, Parent = jumpHandle})
+
+local jumpInput = createInstance("TextBox", {
+    Name = "Input",
+    Size = UDim2.new(0, 45, 0, 22),
+    Position = UDim2.new(0, 130, 0.5, -11),
+    BackgroundColor3 = ColorTheme.jumpPowerBg,
+    Text = "65",
+    TextColor3 = ColorTheme.primaryText,
+    TextSize = 10,
+    Font = Enum.Font.GothamBold,
+    BorderSizePixel = 0,
+    Parent = row3
+})
+createInstance("UICorner", {CornerRadius = UDim.new(0, 4), Parent = jumpInput})
+createInstance("UIStroke", {Color = ColorTheme.accentCyan, Thickness = 1, Transparency = 0.6, Parent = jumpInput})
+
+local jumpKeybindButton = createInstance("TextButton", {
+    Name = "KeybindButton",
+    Size = UDim2.new(0, 40, 0, 22),
+    Position = UDim2.new(0, 178, 0.5, -11),
+    BackgroundColor3 = Color3.fromRGB(45, 45, 60),
+    BackgroundTransparency = 0.3,
+    Text = "NONE",
+    TextColor3 = ColorTheme.secondaryText,
+    TextSize = 7,
+    Font = Enum.Font.GothamBold,
+    BorderSizePixel = 0,
+    AutoButtonColor = false,
+    Parent = row3
+})
+createInstance("UICorner", {CornerRadius = UDim.new(0, 4), Parent = jumpKeybindButton})
+createInstance("UIStroke", {Color = Color3.fromRGB(100, 100, 120), Thickness = 1, Transparency = 0.5, Parent = jumpKeybindButton})
+
+local jumpToggleButton = createInstance("TextButton", {
+    Name = "Toggle",
+    Size = UDim2.new(0, 40, 0, 22),
+    Position = UDim2.new(0, 281, 0.5, -11),
+    BackgroundColor3 = ColorTheme.accentCyan,
+    BackgroundTransparency = 0.2,
+    Text = "OFF",
+    TextColor3 = ColorTheme.primaryText,
+    TextSize = 8,
+    Font = Enum.Font.GothamBold,
+    BorderSizePixel = 0,
+    AutoButtonColor = false,
+    Parent = row3
+})
+createInstance("UICorner", {CornerRadius = UDim.new(0, 4), Parent = jumpToggleButton})
+createInstance("UIStroke", {Color = ColorTheme.accentCyan, Thickness = 1, Transparency = 0.4, Parent = jumpToggleButton})
+
+-- ========================================
+-- ROW 4: SPINNING
+-- ========================================
+local row4 = createInstance("Frame", {
+    Name = "Row4",
+    Size = UDim2.new(1, 0, 0, 32),
+    Position = UDim2.new(0, 0, 0, 96),
+    BackgroundTransparency = 1,
+    Parent = contentContainer
+})
+
+local label4 = createInstance("TextLabel", {
+    Name = "Label",
+    Size = UDim2.new(0, 40, 0, 20),
+    Position = UDim2.new(0, 0, 0.5, -10),
+    BackgroundTransparency = 1,
+    Text = "SPIN",
+    TextColor3 = ColorTheme.primaryText,
+    TextSize = 10,
+    Font = Enum.Font.GothamBold,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    Parent = row4
+})
+
+local spinSliderBg = createInstance("Frame", {
+    Name = "Slider",
+    Size = UDim2.new(0, 70, 0, 6),
+    Position = UDim2.new(0, 42, 0.5, -3),
+    BackgroundColor3 = ColorTheme.sliderTrack,
+    BorderSizePixel = 0,
+    Parent = row4
+})
+createInstance("UICorner", {CornerRadius = UDim.new(1, 0), Parent = spinSliderBg})
+
+local spinSliderFill = createInstance("Frame", {
+    Name = "Fill",
+    Size = UDim2.new(1, 0, 1, 0),
+    BackgroundColor3 = Color3.fromRGB(255, 165, 0),
+    BorderSizePixel = 0,
+    Parent = spinSliderBg
+})
+createInstance("UICorner", {CornerRadius = UDim.new(1, 0), Parent = spinSliderFill})
+
+local spinHandle = createInstance("Frame", {
+    Name = "Handle",
+    Size = UDim2.new(0, 12, 0, 12),
+    Position = UDim2.new(1, -6, 0.5, -6),
+    BackgroundColor3 = Color3.fromRGB(255, 165, 0),
+    BorderSizePixel = 0,
+    ZIndex = 2,
+    Parent = spinSliderBg
+})
+createInstance("UICorner", {CornerRadius = UDim.new(1, 0), Parent = spinHandle})
+createInstance("UIStroke", {Color = ColorTheme.primaryBackground, Thickness = 1, Parent = spinHandle})
+
+local spinInput = createInstance("TextBox", {
+    Name = "Input",
+    Size = UDim2.new(0, 45, 0, 22),
+    Position = UDim2.new(0, 130, 0.5, -11),
+    BackgroundColor3 = Color3.fromRGB(42, 40, 50),
+    Text = "100",
+    TextColor3 = ColorTheme.primaryText,
+    TextSize = 10,
+    Font = Enum.Font.GothamBold,
+    BorderSizePixel = 0,
+    Parent = row4
+})
+createInstance("UICorner", {CornerRadius = UDim.new(0, 4), Parent = spinInput})
+createInstance("UIStroke", {Color = Color3.fromRGB(255, 165, 0), Thickness = 1, Transparency = 0.6, Parent = spinInput})
+
+local spinKeybindButton = createInstance("TextButton", {
+    Name = "KeybindButton",
+    Size = UDim2.new(0, 40, 0, 22),
+    Position = UDim2.new(0, 178, 0.5, -11),
+    BackgroundColor3 = Color3.fromRGB(45, 45, 60),
+    BackgroundTransparency = 0.3,
+    Text = "NONE",
+    TextColor3 = ColorTheme.secondaryText,
+    TextSize = 7,
+    Font = Enum.Font.GothamBold,
+    BorderSizePixel = 0,
+    AutoButtonColor = false,
+    Parent = row4
+})
+createInstance("UICorner", {CornerRadius = UDim.new(0, 4), Parent = spinKeybindButton})
+createInstance("UIStroke", {Color = Color3.fromRGB(100, 100, 120), Thickness = 1, Transparency = 0.5, Parent = spinKeybindButton})
+
+local spinToggleButton = createInstance("TextButton", {
+    Name = "Toggle",
+    Size = UDim2.new(0, 40, 0, 22),
+    Position = UDim2.new(0, 281, 0.5, -11),
+    BackgroundColor3 = Color3.fromRGB(255, 165, 0),
+    BackgroundTransparency = 0.2,
+    Text = "OFF",
+    TextColor3 = ColorTheme.primaryText,
+    TextSize = 8,
+    Font = Enum.Font.GothamBold,
+    BorderSizePixel = 0,
+    AutoButtonColor = false,
+    Parent = row4
+})
+createInstance("UICorner", {CornerRadius = UDim.new(0, 4), Parent = spinToggleButton})
+createInstance("UIStroke", {Color = Color3.fromRGB(255, 165, 0), Thickness = 1, Transparency = 0.4, Parent = spinToggleButton})
+
+-- ========================================
+-- ROW 5: GOD MODE (IMMUNE TO BAT)
+-- ========================================
+local row5 = createInstance("Frame", {
+    Name = "Row5",
+    Size = UDim2.new(1, 0, 0, 32),
+    Position = UDim2.new(0, 0, 0, 128),
+    BackgroundTransparency = 1,
+    Parent = contentContainer
+})
+
+local label5 = createInstance("TextLabel", {
+    Name = "Label",
+    Size = UDim2.new(0, 90, 0, 20),
+    Position = UDim2.new(0, 0, 0.5, -10),
+    BackgroundTransparency = 1,
+    Text = "God Mode (Immune to Bat)",
+    TextColor3 = ColorTheme.primaryText,
+    TextSize = 10,
+    Font = Enum.Font.GothamBold,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    Parent = row5
+})
+
+local godModeKeybindButton = createInstance("TextButton", {
+    Name = "KeybindButton",
+    Size = UDim2.new(0, 40, 0, 22),
+    Position = UDim2.new(0, 133, 0.5, -11),
+    BackgroundColor3 = Color3.fromRGB(45, 45, 60),
+    BackgroundTransparency = 0.3,
+    Text = "NONE",
+    TextColor3 = ColorTheme.secondaryText,
+    TextSize = 7,
+    Font = Enum.Font.GothamBold,
+    BorderSizePixel = 0,
+    AutoButtonColor = false,
+    Parent = row5
+})
+createInstance("UICorner", {CornerRadius = UDim.new(0, 4), Parent = godModeKeybindButton})
+createInstance("UIStroke", {Color = Color3.fromRGB(100, 100, 120), Thickness = 1, Transparency = 0.5, Parent = godModeKeybindButton})
+
+local godModeToggleButton = createInstance("TextButton", {
+    Name = "Toggle",
+    Size = UDim2.new(0, 40, 0, 22),
+    Position = UDim2.new(0, 281, 0.5, -11),
+    BackgroundColor3 = Color3.fromRGB(100, 200, 255),
+    BackgroundTransparency = 0.2,
+    Text = "OFF",
+    TextColor3 = ColorTheme.primaryText,
+    TextSize = 8,
+    Font = Enum.Font.GothamBold,
+    BorderSizePixel = 0,
+    AutoButtonColor = false,
+    Parent = row5
+})
+createInstance("UICorner", {CornerRadius = UDim.new(0, 4), Parent = godModeToggleButton})
+createInstance("UIStroke", {Color = Color3.fromRGB(100, 200, 255), Thickness = 1, Transparency = 0.4, Parent = godModeToggleButton})
+
+-- Premium Only Label for God Mode
+local godModePremiumLabel = createInstance("TextLabel", {
+    Name = "PremiumLabel",
+    Size = UDim2.new(0, 75, 0, 12),
+    Position = UDim2.new(0, 185, 0.5, -5),
+    BackgroundTransparency = 1,
+    Text = "PREMIUM ONLY",
+    TextColor3 = Color3.fromRGB(255, 215, 0),
+    TextSize = 9,
+    Font = Enum.Font.GothamBold,
+    TextXAlignment = Enum.TextXAlignment.Center,
+    Parent = row5
+})
+
+local godModePremiumGradient = createInstance("UIGradient", {
+    Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 215, 0)),
+        ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 240, 100)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 215, 0))
+    }),
+    Rotation = 0,
+    Parent = godModePremiumLabel
+})
+
+-- ========================================
+-- ROW 6: AUTO BAT (PREMIUM ONLY - FREE VERSION)
+-- ========================================
+local row6 = createInstance("Frame", {
+    Name = "Row6",
+    Size = UDim2.new(1, 0, 0, 32),
+    Position = UDim2.new(0, 0, 0, 160),
+    BackgroundTransparency = 1,
+    Parent = contentContainer
+})
+
+local label6 = createInstance("TextLabel", {
+    Name = "Label",
+    Size = UDim2.new(0, 160, 0, 20),
+    Position = UDim2.new(0, 0, 0.5, -10),
+    BackgroundTransparency = 1,
+    Text = "Auto Bat (while stealing)",
+    TextColor3 = ColorTheme.primaryText,
+    TextSize = 10,
+    Font = Enum.Font.GothamBold,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    Parent = row6
+})
+
+local autoBatKeybindButton = createInstance("TextButton", {
+    Name = "KeybindButton",
+    Size = UDim2.new(0, 40, 0, 22),
+    Position = UDim2.new(0,133, 0.5, -11),
+    BackgroundColor3 = Color3.fromRGB(45, 45, 60),
+    BackgroundTransparency = 0.3,
+    Text = "NONE",
+    TextColor3 = ColorTheme.secondaryText,
+    TextSize = 7,
+    Font = Enum.Font.GothamBold,
+    BorderSizePixel = 0,
+    AutoButtonColor = false,
+    Parent = row6
+})
+createInstance("UICorner", {CornerRadius = UDim.new(0, 4), Parent = autoBatKeybindButton})
+createInstance("UIStroke", {Color = Color3.fromRGB(100, 100, 120), Thickness = 1, Transparency = 0.5, Parent = autoBatKeybindButton})
+
+local autoBatToggleButton = createInstance("TextButton", {
+    Name = "Toggle",
+    Size = UDim2.new(0, 40, 0, 22),
+    Position = UDim2.new(0, 281, 0.5, -11),
+    BackgroundColor3 = Color3.fromRGB(255, 140, 0),
+    BackgroundTransparency = 0.2,
+    Text = "OFF",
+    TextColor3 = ColorTheme.primaryText,
+    TextSize = 8,
+    Font = Enum.Font.GothamBold,
+    BorderSizePixel = 0,
+    AutoButtonColor = false,
+    Parent = row6
+})
+createInstance("UICorner", {CornerRadius = UDim.new(0, 4), Parent = autoBatToggleButton})
+createInstance("UIStroke", {Color = Color3.fromRGB(255, 140, 0), Thickness = 1, Transparency = 0.4, Parent = autoBatToggleButton})
+
+-- PREMIUM ONLY LABEL for AutoBat (Gold Glowing Animated Text)
+local premiumLabel = createInstance("TextLabel", {
+    Name = "PremiumLabel",
+    Size = UDim2.new(0, 75, 0, 12),
+    Position = UDim2.new(0, 185, 0.5, -5),
+    BackgroundTransparency = 1,
+    Text = "PREMIUM ONLY",
+    TextColor3 = Color3.fromRGB(255, 215, 0),
+    TextSize = 9,
+    Font = Enum.Font.GothamBold,
+    TextXAlignment = Enum.TextXAlignment.Center,
+    Parent = row6
+})
+
+-- Add gradient to premium label for animated glow
+local premiumGradient = createInstance("UIGradient", {
+    Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 200, 0)),
+        ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 255, 100)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 200, 0))
+    }),
+    Rotation = 0,
+    Parent = premiumLabel
+})
+
+-- ========================================
+-- ROW 7: DESYNC (NON-PREMIUM)
+-- ========================================
+local row7 = createInstance("Frame", {
+    Name = "Row7",
+    Size = UDim2.new(1, 0, 0, 32),
+    Position = UDim2.new(0, 0, 0, 192),
+    BackgroundTransparency = 1,
+    Parent = contentContainer
+})
+
+local label7 = createInstance("TextLabel", {
+    Name = "Label",
+    Size = UDim2.new(0, 100, 0, 20),
+    Position = UDim2.new(0, 0, 0.5, -10),
+    BackgroundTransparency = 1,
+    Text = "Desync (Basic-Version)",
+    TextColor3 = ColorTheme.primaryText,
+    TextSize = 9,
+    Font = Enum.Font.GothamBold,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    Parent = row7
+})
+
+local desyncKeybindButton = createInstance("TextButton", {
+    Name = "KeybindButton",
+    Size = UDim2.new(0, 40, 0, 22),
+    Position = UDim2.new(0, 133, 0.5, -11),
+    BackgroundColor3 = Color3.fromRGB(45, 45, 60),
+    BackgroundTransparency = 0.3,
+    Text = "NONE",
+    TextColor3 = ColorTheme.secondaryText,
+    TextSize = 7,
+    Font = Enum.Font.GothamBold,
+    BorderSizePixel = 0,
+    AutoButtonColor = false,
+    Parent = row7
+})
+createInstance("UICorner", {CornerRadius = UDim.new(0, 4), Parent = desyncKeybindButton})
+createInstance("UIStroke", {Color = Color3.fromRGB(100, 100, 120), Thickness = 1, Transparency = 0.5, Parent = desyncKeybindButton})
+
+local desyncToggleButton = createInstance("TextButton", {
+    Name = "Toggle",
+    Size = UDim2.new(0, 40, 0, 22),
+    Position = UDim2.new(0, 281, 0.5, -11),
+    BackgroundColor3 = Color3.fromRGB(255, 140, 0),
+    BackgroundTransparency = 0.2,
+    Text = "OFF",
+    TextColor3 = ColorTheme.primaryText,
+    TextSize = 8,
+    Font = Enum.Font.GothamBold,
+    BorderSizePixel = 0,
+    AutoButtonColor = false,
+    Parent = row7
+})
+createInstance("UICorner", {CornerRadius = UDim.new(0, 4), Parent = desyncToggleButton})
+createInstance("UIStroke", {Color = Color3.fromRGB(255, 140, 0), Thickness = 1, Transparency = 0.4, Parent = desyncToggleButton})
+
+
+local FreeLabel = createInstance("TextLabel", {
+    Name = "FreeLabel",
+    Size = UDim2.new(0, 75, 0, 12),
+    Position = UDim2.new(0, 185, 1.4, -5),
+    BackgroundTransparency = 1,
+    Text = "PATCHED",
+    TextColor3 = Color3.fromRGB(255, 0, 0),
+    TextSize = 10,
+    Font = Enum.Font.GothamBold,
+    TextXAlignment = Enum.TextXAlignment.Center,
+    Parent = row6
+})
+
+
+local FreeGradient = createInstance("UIGradient", {
+    Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 0, 0)),
+        ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 100, 100)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 0, 0))
+    }),
+    Rotation = 0,
+    Parent = FreeLabel
+})
+
+
+local premiumLabel = createInstance("TextLabel", {
+    Name = "PremiumLabel",
+    Size = UDim2.new(0, 75, 0, 12),
+    Position = UDim2.new(0, 190, 2.2, -5),
+    BackgroundTransparency = 1,
+    Text = "",
+    TextColor3 = Color3.fromRGB(255, 215, 0),
+    TextSize = 9,
+    Font = Enum.Font.GothamBold,
+    TextXAlignment = Enum.TextXAlignment.Center,
+    Parent = row6
+})
+
+
+local premiumGradient = createInstance("UIGradient", {
+    Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 200, 0)),
+        ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 255, 100)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 200, 0))
+    }),
+    Rotation = 0,
+    Parent = premiumLabel
+})
+-- ========================================
+-- HEADER: BEST SETTINGS BUTTON
+-- ========================================
+local bestSettingsButton = createInstance("TextButton", {
+    Name = "BestSettingsButton",
+    Size = UDim2.new(0, 85, 0, 24),
+    Position = UDim2.new(1, -140, 0, 13),
+    BackgroundColor3 = ColorTheme.accentGreen,
+    BackgroundTransparency = 0.2,
+    Text = "BEST SETTINGS",
+    TextColor3 = ColorTheme.primaryText,
+    TextSize = 8,
+    Font = Enum.Font.GothamBold,
+    BorderSizePixel = 0,
+    AutoButtonColor = false,
+    ZIndex = 20,
+    Parent = mainContainer
+})
+
+createInstance("UICorner", {
+    CornerRadius = UDim.new(0, 6),
+    Parent = bestSettingsButton
+})
+
+createInstance("UIStroke", {
+    Color = ColorTheme.accentGreen,
+    Thickness = 1,
+    Transparency = 0.4,
+    Parent = bestSettingsButton
+})
+
+-- Toggle All label on background
+local toggleAllLabel = createInstance("TextLabel", {
+    Name = "ToggleAllLabel",
+    Size = UDim2.new(0, 45, 0, 35),
+    Position = UDim2.new(0, 85, 0, 5),
+    BackgroundTransparency = 1,
+    Text = "Toggle All",
+    TextColor3 = ColorTheme.primaryText,
+    TextSize = 9,
+    Font = Enum.Font.GothamBold,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    TextWrapped = true,
+    Visible = false,
+    ZIndex = 6,
+    Parent = collapsedButtonsBackground
+})
+
+-- Toggle All Button (shows when frame is closed) - Small square
+local toggleAllButtonCollapsed = createInstance("TextButton", {
+    Name = "ToggleAllButtonCollapsed",
+    Size = UDim2.new(0, 28, 0, 28),
+    Position = UDim2.new(0, 137, 0, 8),
+    BackgroundColor3 = ColorTheme.inactiveRed,
+    BackgroundTransparency = 0,
+    Text = "",
+    TextColor3 = ColorTheme.primaryText,
+    TextSize = 8,
+    Font = Enum.Font.GothamBold,
+    BorderSizePixel = 0,
+    AutoButtonColor = false,
+    Visible = false,
+    Draggable = false,
+    ZIndex = 20,
+    Parent = collapsedButtonsBackground
+})
+
+createInstance("UICorner", {
+    CornerRadius = UDim.new(0, 6),
+    Parent = toggleAllButtonCollapsed
+})
+
+createInstance("UIStroke", {
+    Color = Color3.fromRGB(180, 40, 40),
+    Thickness = 2,
+    Transparency = 0,
+    Parent = toggleAllButtonCollapsed
+})
+
+-- Keybind button for Toggle All
+local toggleAllKeybindButton = createInstance("TextButton", {
+    Name = "ToggleAllKeybindButton",
+    Size = UDim2.new(0, 45, 0, 35),
+    Position = UDim2.new(0, 170, 0, 5),
+    BackgroundColor3 = Color3.fromRGB(45, 45, 60),
+    BackgroundTransparency = 0.3,
+    Text = "R",
+    TextColor3 = ColorTheme.secondaryText,
+    TextSize = 7,
+    Font = Enum.Font.GothamBold,
+    BorderSizePixel = 0,
+    AutoButtonColor = false,
+    Visible = false,
+    ZIndex = 7,
+    Parent = collapsedButtonsBackground
+})
+
+createInstance("UICorner", {
+    CornerRadius = UDim.new(0, 4),
+    Parent = toggleAllKeybindButton
+})
+
+createInstance("UIStroke", {
+    Color = Color3.fromRGB(100, 100, 120),
+    Thickness = 1,
+    Transparency = 0.5,
+    Parent = toggleAllKeybindButton
+})
+
+-- Settings button for Toggle All
+local settingsButtonCollapsed = createInstance("TextButton", {
+    Name = "SettingsButtonCollapsed",
+    Size = UDim2.new(0, 40, 0, 35),
+    Position = UDim2.new(0, 220, 0, 5),
+    BackgroundColor3 = Color3.fromRGB(45, 45, 60),
+    BackgroundTransparency = 0.3,
+    Text = "=",
+    TextColor3 = ColorTheme.secondaryText,
+    TextSize = 16,
+    Font = Enum.Font.GothamBold,
+    BorderSizePixel = 0,
+    AutoButtonColor = false,
+    Visible = false,
+    ZIndex = 7,
+    Parent = collapsedButtonsBackground
+})
+
+createInstance("UICorner", {
+    CornerRadius = UDim.new(0, 4),
+    Parent = settingsButtonCollapsed
+})
+
+createInstance("UIStroke", {
+    Color = Color3.fromRGB(100, 100, 120),
+    Thickness = 1,
+    Transparency = 0.5,
+    Parent = settingsButtonCollapsed
+})
+
+-- Settings menu for toggle all options
+local settingsMenuFrame = createInstance("Frame", {
+    Name = "SettingsMenuFrame",
+    Size = UDim2.new(0, 240, 0, 300),
+    Position = UDim2.new(0.5, -120, 0.1, 50),
+    BackgroundColor3 = ColorTheme.primaryBackground,
+    BackgroundTransparency = 0.05,
+    BorderSizePixel = 0,
+    Visible = false,
+    Active = true,
+    Draggable = true,
+    ZIndex = 10,
+    Parent = screenGui
+})
+
+createInstance("UICorner", {
+    CornerRadius = UDim.new(0, 8),
+    Parent = settingsMenuFrame
+})
+
+local settingsStroke = createInstance("UIStroke", {
+    Color = Color3.fromRGB(255, 255, 255),
+    Thickness = 1.5,
+    Transparency = 0.4,
+    ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+    Parent = settingsMenuFrame
+})
+
+local settingsStrokeGradient = createInstance("UIGradient", {
+    Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(0, 0, 0)),
+        ColorSequenceKeypoint.new(0.2, Color3.fromRGB(255, 255, 255)),
+        ColorSequenceKeypoint.new(0.8, Color3.fromRGB(255, 255, 255)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 0, 0))
+    }),
+    Rotation = 0,
+    Parent = settingsStroke
+})
+
+-- Title for settings menu
+local settingsTitle = createInstance("TextLabel", {
+    Name = "SettingsTitle",
+    Size = UDim2.new(1, 0, 0, 25),
+    Position = UDim2.new(0, 0, 0, 0),
+    BackgroundTransparency = 1,
+    Text = "Toggle All Settings",
+    TextColor3 = ColorTheme.accentPurple,
+    TextSize = 10,
+    Font = Enum.Font.GothamBold,
+    TextXAlignment = Enum.TextXAlignment.Center,
+    Parent = settingsMenuFrame
+})
+
+-- Settings table for toggle all
+local toggleAllSettings = {
+    speed = true,
+    steal = true,
+    jump = true,
+    spin = false,
+    godMode = false,  -- Disabled for Free Version
+    autoBat = false,  -- Disabled for Free Version
+    desync = false    -- Disabled for all versions
+}
+
+-- Helper function to create toggle option
+local function createSettingsToggle(name, label, yPosition)
+    local toggleContainer = createInstance("Frame", {
+        Name = name .. "Container",
+        Size = UDim2.new(0, 160, 0, 30),
+        Position = UDim2.new(0, 10, 0, yPosition + 25),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        Parent = settingsMenuFrame
+    })
+    
+    local checkBox = createInstance("TextButton", {
+        Name = name .. "Checkbox",
+        Size = UDim2.new(0, 20, 0, 20),
+        Position = UDim2.new(0, 0, 0.5, -10),
+        BackgroundColor3 = toggleAllSettings[name] and ColorTheme.accentPurple or Color3.fromRGB(60, 60, 80),
+        BackgroundTransparency = 0.2,
+        Text = toggleAllSettings[name] and "o" or "",
+        TextColor3 = ColorTheme.accentPurple,
+        TextSize = 14,
+        Font = Enum.Font.GothamBold,
+        BorderSizePixel = 0,
+        AutoButtonColor = false,
+        ZIndex = 11,
+        Parent = toggleContainer
+    })
+    
+    createInstance("UICorner", {
+        CornerRadius = UDim.new(0, 4),
+        Parent = checkBox
+    })
+    
+    local labelText = createInstance("TextLabel", {
+        Name = name .. "Label",
+        Size = UDim2.new(0, 120, 0, 20),
+        Position = UDim2.new(0, 30, 0.5, -10),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        Text = label,
+        TextColor3 = ColorTheme.primaryText,
+        TextSize = 11,
+        Font = Enum.Font.Gotham,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ZIndex = 11,
+        Parent = toggleContainer
+    })
+    
+    checkBox.MouseButton1Click:Connect(function()
+        toggleAllSettings[name] = not toggleAllSettings[name]
+        checkBox.BackgroundColor3 = toggleAllSettings[name] and ColorTheme.accentPurple or Color3.fromRGB(60, 60, 80)
+        checkBox.Text = toggleAllSettings[name] and "o" or ""
+    end)
+end
+
+-- Create all toggle options
+createSettingsToggle("speed", "Speed", 10)
+createSettingsToggle("steal", "Steal Speed", 45)
+createSettingsToggle("jump", "Jump Controller", 80)
+createSettingsToggle("spin", "Spinning", 115)
+createSettingsToggle("godMode", "God Mode (Immune to Bat)", 150)
+createSettingsToggle("autoBat", "Auto Bat", 190)
+createSettingsToggle("desync", "Desync (OP)", 230)
+
+-- ========================================
+-- STATE MANAGEMENT & KEYBINDS
+-- ========================================
+
+-- Settings persistence (Cross-executor compatible)
+local settingsFile = "speedcontroller_settings.json"
+
+local function saveSettings()
+    local settings = {
+        speeds = {
+            normalSpeed = tonumber(normalSpeedInput.Text) or 16,
+            stealSpeed = tonumber(stealSpeedInput.Text) or 25,
+            jumpPower = tonumber(jumpPowerInput.Text) or 50,
+            spinSpeed = tonumber(spinSpeedInput.Text) or 50
+        },
+        states = {
+            speed = speedControllerActive,
+            steal = stealModeActive,
+            jump = jumpControllerActive,
+            spin = spinningActive,
+            autoBat = autoBatActive
+        },
+        toggleAll = toggleAllSettings,
+        keybinds = keybinds
+    }
+    
+    local success = false
+    local errorMsg = ""
+    
+    -- Try to save with different methods for executor compatibility
+    success = pcall(function()
+        if writefile then
+            local jsonString = game:GetService("HttpService"):JSONEncode(settings)
+            writefile(settingsFile, jsonString)
+        else
+            error("writefile not available")
+        end
+    end)
+    
+    if success then
+        -- Visual feedback - flash green
+        saveButton.BackgroundColor3 = Color3.fromRGB(100, 200, 100)
+        saveButton.Text = "SAVED"
+        task.wait(0.5)
+        saveButton.BackgroundColor3 = ColorTheme.accentGreen
+        saveButton.Text = "SAVE"
+    else
+        -- Show error feedback - flash red
+        saveButton.BackgroundColor3 = Color3.fromRGB(200, 100, 100)
+        saveButton.Text = "FAIL"
+        task.wait(0.5)
+        saveButton.BackgroundColor3 = ColorTheme.accentGreen
+        saveButton.Text = "SAVE"
+    end
+end
+
+local function loadSettings()
+    local success = false
+    local settings = nil
+    
+    -- Try to load with different methods for executor compatibility
+    success = pcall(function()
+        if readfile and isfile then
+            if isfile(settingsFile) then
+                local jsonString = readfile(settingsFile)
+                settings = game:GetService("HttpService"):JSONDecode(jsonString)
+            end
+        else
+            error("readfile/isfile not available")
+        end
+    end)
+    
+    if not success or not settings then return end
+    
+    -- Load speeds
+    if settings.speeds then
+        normalSpeedInput.Text = tostring(settings.speeds.normalSpeed)
+        stealSpeedInput.Text = tostring(settings.speeds.stealSpeed)
+        jumpPowerInput.Text = tostring(settings.speeds.jumpPower)
+        spinSpeedInput.Text = tostring(settings.speeds.spinSpeed)
+    end
+    
+    -- Load toggle all settings
+    if settings.toggleAll then
+        for key, value in pairs(settings.toggleAll) do
+            toggleAllSettings[key] = value
+        end
+    end
+    
+    -- Load keybinds
+    if settings.keybinds then
+        for key, value in pairs(settings.keybinds) do
+            keybinds[key] = value
+        end
+    end
+end
+
+-- Load settings on startup
+loadSettings()
+
+local speedControllerActive = false
+local speedUpdateConnection
+local normalSpeedValue = 55
+local stealModeSpeedValue = 29
+local jumpPowerValue = 65
+local jumpControllerActive = false
+
+-- BETA: SPINNING STATE
+local spinningActive = false
+local spinningConnection
+local spinningSpeedValue = 100
+
+-- KEYBIND SYSTEM
+local keybinds = {
+    speed = Enum.KeyCode.X,
+    steal = Enum.KeyCode.V,
+    jump = Enum.KeyCode.C,
+    spin = Enum.KeyCode.F,
+    autoBat = Enum.KeyCode.Q,
+    desync = Enum.KeyCode.T,
+    toggleAll = Enum.KeyCode.R
+}
+
+-- Initialize keybind button displays with default keybinds
+local function initializeKeybindDisplay()
+    if speedKeybindButton then speedKeybindButton.Text = keybinds.speed and keybinds.speed.Name or "NONE" end
+    if stealKeybindButton then stealKeybindButton.Text = keybinds.steal and keybinds.steal.Name or "NONE" end
+    if jumpKeybindButton then jumpKeybindButton.Text = keybinds.jump and keybinds.jump.Name or "NONE" end
+    if spinKeybindButton then spinKeybindButton.Text = keybinds.spin and keybinds.spin.Name or "NONE" end
+    if autoBatKeybindButton then autoBatKeybindButton.Text = keybinds.autoBat and keybinds.autoBat.Name or "NONE" end
+    if desyncKeybindButton then desyncKeybindButton.Text = keybinds.desync and keybinds.desync.Name or "NONE" end
+    if toggleAllKeybindButton then toggleAllKeybindButton.Text = keybinds.toggleAll and keybinds.toggleAll.Name or "NONE" end
+end
+
+local waitingForKey = {
+    active = false,
+    control = nil,
+    button = nil
+}
+
+local keyPressStates = {
+    speed = false,
+    steal = false,
+    jump = false,
+    spin = false
+}
+
+local justSetKeybind = false
+
+-- ========================================
+-- KEYBINDING FUNCTIONS
+-- ========================================
+local function setKeybind(controlName, keybindButton)
+    waitingForKey.active = true
+    waitingForKey.control = controlName
+    waitingForKey.button = keybindButton
+    justSetKeybind = false
+    
+    keybindButton.BackgroundColor3 = Color3.fromRGB(100, 60, 60)
+    keybindButton.Text = "..."
+    keybindButton.UIStroke.Color = Color3.fromRGB(255, 100, 100)
+end
+
+local function getKeyName(input)
+    if input.UserInputType == Enum.UserInputType.Keyboard then
+        return input.KeyCode.Name
+    elseif input.UserInputType == Enum.UserInputType.MouseButton1 then
+        return "MB1"
+    elseif input.UserInputType == Enum.UserInputType.MouseButton2 then
+        return "MB2"
+    end
+    return nil
+end
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if waitingForKey.active then
+        local keyName = getKeyName(input)
+        if keyName then
+            keybinds[waitingForKey.control] = input.KeyCode or input.UserInputType
+            waitingForKey.button.Text = keyName
+            waitingForKey.button.BackgroundColor3 = Color3.fromRGB(45, 45, 60)
+            waitingForKey.button.UIStroke.Color = Color3.fromRGB(100, 100, 120)
+            waitingForKey.active = false
+            waitingForKey.control = nil
+            waitingForKey.button = nil
+            justSetKeybind = true
+        end
+    end
+end)
+
+-- ========================================
+-- SLIDER INTERACTION LOGIC
+-- ========================================
+local function setupSliderRow(sliderBg, sliderFill, handle, inputBox, minValue, maxValue, valueCallback)
+    local dragging = false
+    local sliderWidth = 80
+    
+    local function updateSlider(value)
+        local normalizedValue = math.clamp((value - minValue) / (maxValue - minValue), 0, 1)
+        local pixelPosition = normalizedValue * sliderWidth
+        
+        sliderFill.Size = UDim2.new(0, pixelPosition, 1, 0)
+        handle.Position = UDim2.new(0, pixelPosition - 5, 0.5, -5)
+        
+        inputBox.Text = tostring(math.floor(value))
+        valueCallback(value)
+    end
+    
+    local function startDrag()
+        dragging = true
+        
+        local function updatePos()
+            if not dragging then return end
+            
+            local mouseX = UserInputService:GetMouseLocation().X
+            local sliderX = sliderBg.AbsolutePosition.X
+            local relativePos = math.clamp(mouseX - sliderX, 0, sliderWidth)
+            local normalizedPos = relativePos / sliderWidth
+            local value = minValue + (normalizedPos * (maxValue - minValue))
+            
+            updateSlider(math.floor(value))
+        end
+        
+        local connection
+        connection = RunService.RenderStepped:Connect(updatePos)
+        
+        UserInputService.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                dragging = false
+                connection:Disconnect()
+            end
+        end)
+    end
+    
+    handle.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            startDrag()
+        end
+    end)
+    
+    sliderBg.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            local mouseX = UserInputService:GetMouseLocation().X
+            local sliderX = sliderBg.AbsolutePosition.X
+            local relativePos = math.clamp(mouseX - sliderX, 0, sliderWidth)
+            local normalizedPos = relativePos / sliderWidth
+            local value = minValue + (normalizedPos * (maxValue - minValue))
+            
+            updateSlider(math.floor(value))
+            startDrag()
+        end
+    end)
+    
+    return updateSlider
+end
+
+-- Setup all sliders
+local updateNormalSpeed = setupSliderRow(normalSpeedSliderBg, normalSpeedSliderFill, normalSpeedHandle, normalSpeedInput, 15, 100, function(v) normalSpeedValue = v end)
+local updateStealSpeed = setupSliderRow(stealSpeedSliderBg, stealSpeedSliderFill, stealSpeedHandle, stealSpeedInput, 15, 100, function(v) stealModeSpeedValue = v end)
+local updateJumpPower = setupSliderRow(jumpSliderBg, jumpSliderFill, jumpHandle, jumpInput, 50, 150, function(v) jumpPowerValue = v end)
+local updateSpinSpeed = setupSliderRow(spinSliderBg, spinSliderFill, spinHandle, spinInput, 30, 100, function(v) spinningSpeedValue = v end)
+
+-- Initialize
+updateNormalSpeed(16)
+updateStealSpeed(50)
+updateJumpPower(50)
+updateSpinSpeed(30)
+
+-- ========================================
+-- INPUT VALIDATION
+-- ========================================
+normalSpeedInput.FocusLost:Connect(function()
+    local sanitized = normalSpeedInput.Text:gsub("%D", "")
+    local value = math.clamp(tonumber(sanitized) or 15, 15, 100)
+    normalSpeedValue = value
+    normalSpeedInput.Text = tostring(value)
+    updateNormalSpeed(value)
+end)
+
+stealSpeedInput.FocusLost:Connect(function()
+    local sanitized = stealSpeedInput.Text:gsub("%D", "")
+    local value = math.clamp(tonumber(sanitized) or 15, 15, 100)
+    stealModeSpeedValue = value
+    stealSpeedInput.Text = tostring(value)
+    updateStealSpeed(value)
+end)
+
+jumpInput.FocusLost:Connect(function()
+    local sanitized = jumpInput.Text:gsub("%D", "")
+    local value = math.clamp(tonumber(sanitized) or 50, 50, 150)
+    jumpPowerValue = value
+    jumpInput.Text = tostring(value)
+    updateJumpPower(value)
+end)
+
+spinInput.FocusLost:Connect(function()
+    local sanitized = spinInput.Text:gsub("%D", "")
+    local value = math.clamp(tonumber(sanitized) or 30, 30, 100)
+    spinningSpeedValue = value
+    spinInput.Text = tostring(value)
+    updateSpinSpeed(value)
+end)
+
+local function toggleSpeedController()
+    speedControllerActive = not speedControllerActive
+    
+    if speedControllerActive then
+        speedToggleButton.Text = "ON"
+        speedToggleButton.BackgroundColor3 = ColorTheme.activeGreen
+        speedToggleButton.UIStroke.Color = ColorTheme.activeGreen
+        
+        speedUpdateConnection = RunService.Heartbeat:Connect(function()
+            if playerCharacter and playerCharacter.Parent and humanoidRootPart and humanoidRootPart.Parent and humanoid then
+                local movementDirection = humanoid.MoveDirection
+                if movementDirection.Magnitude > 0 then
+                    -- Don't apply speed if in steal mode (walk speed < 25)
+                    if humanoid.WalkSpeed >= 25 then
+                        humanoidRootPart.AssemblyLinearVelocity = Vector3.new(
+                            movementDirection.X * normalSpeedValue,
+                            humanoidRootPart.AssemblyLinearVelocity.Y,
+                            movementDirection.Z * normalSpeedValue
+                        )
+                    end
+                end
+            end
+        end)
+    else
+        speedToggleButton.Text = "OFF"
+        speedToggleButton.BackgroundColor3 = ColorTheme.inactiveRed
+        speedToggleButton.UIStroke.Color = ColorTheme.inactiveRed
+        
+        if speedUpdateConnection then
+            speedUpdateConnection:Disconnect()
+            speedUpdateConnection = nil
+        end
+    end
+end
+
+speedToggleButton.MouseButton1Click:Connect(toggleSpeedController)
+
+-- Speed Keybind
+speedKeybindButton.MouseButton1Click:Connect(function()
+    setKeybind("speed", speedKeybindButton)
+end)
+
+-- Auto Bat Keybind (PREMIUM ONLY)
+autoBatKeybindButton.MouseButton1Click:Connect(function()
+    print("Auto Bat is Premium Only")
+end)
+
+-- ========================================
+-- STEAL TOGGLE CONTROLLER
+-- ========================================
+local stealModeActive = false
+local stealConnection
+
+local function toggleStealMode()
+    stealModeActive = not stealModeActive
+    
+    if stealModeActive then
+        stealToggleButton.Text = "ON"
+        stealToggleButton.BackgroundColor3 = ColorTheme.activeGreen
+        stealToggleButton.UIStroke.Color = ColorTheme.activeGreen
+        
+        stealConnection = RunService.Heartbeat:Connect(function()
+            if playerCharacter and playerCharacter.Parent and humanoidRootPart and humanoidRootPart.Parent and humanoid then
+                local moveDirection = humanoid.MoveDirection
+                if moveDirection.Magnitude > 0 then
+                    local isSteal = humanoid.WalkSpeed < 25
+                    if isSteal then
+                        humanoidRootPart.AssemblyLinearVelocity = Vector3.new(
+                            moveDirection.X * stealModeSpeedValue,
+                            humanoidRootPart.AssemblyLinearVelocity.Y,
+                            moveDirection.Z * stealModeSpeedValue
+                        )
+                    end
+                end
+            end
+        end)
+    else
+        stealToggleButton.Text = "OFF"
+        stealToggleButton.BackgroundColor3 = ColorTheme.accentPurple
+        stealToggleButton.UIStroke.Color = ColorTheme.accentPurple
+        
+        if stealConnection then
+            stealConnection:Disconnect()
+            stealConnection = nil
+        end
+    end
+end
+
+stealToggleButton.MouseButton1Click:Connect(toggleStealMode)
+
+-- Steal Keybind
+stealKeybindButton.MouseButton1Click:Connect(function()
+    setKeybind("steal", stealKeybindButton)
+end)
+
+local function toggleJumpController()
+    jumpControllerActive = not jumpControllerActive
+    
+    if jumpControllerActive then
+        jumpToggleButton.Text = "ON"
+        jumpToggleButton.BackgroundColor3 = ColorTheme.activeGreen
+        jumpToggleButton.UIStroke.Color = ColorTheme.activeGreen
+    else
+        jumpToggleButton.Text = "OFF"
+        jumpToggleButton.BackgroundColor3 = ColorTheme.accentCyan
+        jumpToggleButton.UIStroke.Color = ColorTheme.accentCyan
+    end
+end
+
+jumpToggleButton.MouseButton1Click:Connect(toggleJumpController)
+
+-- Jump Keybind
+jumpKeybindButton.MouseButton1Click:Connect(function()
+    setKeybind("jump", jumpKeybindButton)
+end)
+
+UserInputService.JumpRequest:Connect(function()
+    if jumpControllerActive and playerCharacter and humanoidRootPart and humanoid then
+        humanoidRootPart.AssemblyLinearVelocity = Vector3.new(
+            humanoidRootPart.AssemblyLinearVelocity.X,
+            jumpPowerValue,
+            humanoidRootPart.AssemblyLinearVelocity.Z
+        )
+    end
+end)
+
+-- ========================================
+-- AUTO BAT CONTROLLER (DISABLED IN FREE VERSION)
+-- ========================================
+local autoBatActive = false
+local autoBatConnection = nil
+
+local function toggleAutoBat()
+    -- Do nothing - AUTO BAT is premium only
+    print("⚠️ Auto Bat is a PREMIUM ONLY feature. Please upgrade!")
+end
+
+-- Auto Bat is disabled - button does nothing when clicked
+autoBatToggleButton.MouseButton1Click:Connect(function()
+    -- Show a message that this is premium only
+    print("⚠️ Auto Bat is locked to Premium users only")
+end)
+
+-- ========================================
+-- BEST SETTINGS
+-- ========================================
+local function applyBestSettings()
+    normalSpeedValue = 55
+    stealModeSpeedValue = 29
+    jumpPowerValue = 65
+    spinningSpeedValue = 100
+    
+    normalSpeedInput.Text = "55"
+    stealSpeedInput.Text = "29"
+    jumpInput.Text = "65"
+    spinSpeedInput.Text = "100"
+    
+    updateNormalSpeed(55)
+    updateStealSpeed(29)
+    updateJumpPower(65)
+    updateSpinSpeed(100)
+end
+
+bestSettingsButton.MouseButton1Click:Connect(applyBestSettings)
+
+-- ========================================
+-- GOD MODE (ANTI-FALL) CONTROLLER
+-- ========================================
+local godModeActive = false
+local godModeConnection
+
+local function toggleGodMode()
+    godModeActive = not godModeActive
+    
+    if godModeActive then
+        -- Start God Mode
+        godModeToggleButton.BackgroundColor3 = Color3.fromRGB(100, 200, 255)
+        godModeToggleButton.Text = "ON"
+        
+        -- God Mode implementation
+        if not playerCharacter then return end
+        local p = localPlayer
+        local c = playerCharacter
+        local h = humanoid
+        local r = humanoidRootPart
+        
+        r.Anchored = false
+        r.CustomPhysicalProperties = PhysicalProperties.new(100, 0, 0, 100, 100)
+        
+        local lastPos = r.Position
+        local lastCF = r.CFrame
+        
+        -- Block ragdoll attributes
+        local function blockRagdoll()
+            p:SetAttribute("RagdollEndTime", nil)
+            c:SetAttribute("RagdollEndTime", nil)
+        end
+        
+        p.AttributeChanged:Connect(function(a)
+            if a == "RagdollEndTime" and godModeActive then blockRagdoll() end
+        end)
+        c.AttributeChanged:Connect(function(a)
+            if a == "RagdollEndTime" and godModeActive then blockRagdoll() end
+        end)
+        
+        h.StateChanged:Connect(function(o, n)
+            if godModeActive and (n == Enum.HumanoidStateType.Physics or 
+               n == Enum.HumanoidStateType.Ragdoll or 
+               n == Enum.HumanoidStateType.FallingDown) then
+                h:ChangeState(Enum.HumanoidStateType.RunningNoPhysics)
+            end
+        end)
+        
+        for _, m in pairs(c:GetDescendants()) do
+            if m:IsA("Motor6D") then
+                m:GetPropertyChangedSignal("Enabled"):Connect(function()
+                    if not m.Enabled and godModeActive then m.Enabled = true end
+                end)
+            end
+            if m:IsA("BasePart") and m ~= r then
+                m.CustomPhysicalProperties = PhysicalProperties.new(0.01, 0, 0, 100, 100)
+            end
+        end
+        
+        c.DescendantAdded:Connect(function(d)
+            if godModeActive then
+                if d:IsA("BallSocketConstraint") or d:IsA("HingeConstraint") then
+                    d:Destroy()
+                elseif d:IsA("BodyVelocity") or d:IsA("BodyForce") or d:IsA("BodyPosition") or d:IsA("BodyGyro") or d:IsA("BodyThrust") or d:IsA("BodyAngularVelocity") then
+                    d:Destroy()
+                end
+            end
+        end)
+        
+        local locked = false
+        godModeConnection = RunService.Heartbeat:Connect(function()
+            if not godModeActive then return end
+            for _, d in pairs(c:GetDescendants()) do
+                if d:IsA("BodyVelocity") or d:IsA("BodyForce") or d:IsA("BodyPosition") or d:IsA("BodyGyro") then
+                    d:Destroy()
+                end
+            end
+            local moving = h.MoveVector.Magnitude > 0.1 or h.Jump
+            if moving then
+                lastPos = r.Position
+                lastCF = r.CFrame
+                locked = false
+            end
+            local vel = r.AssemblyLinearVelocity
+            if vel.Magnitude > 50 and not moving and not locked then
+                r.CFrame = lastCF
+                r.AssemblyLinearVelocity = Vector3.zero
+                r.AssemblyAngularVelocity = Vector3.zero
+                locked = true
+                task.wait(0.1)
+                locked = false
+            end
+        end)
+        
+        r:GetPropertyChangedSignal("CFrame"):Connect(function()
+            if locked and godModeActive then
+                r.CFrame = lastCF
+            end
+        end)
+        
+        h:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+        h:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
+        h:SetStateEnabled(Enum.HumanoidStateType.Physics, false)
+        blockRagdoll()
+    else
+        -- Stop God Mode
+        godModeToggleButton.BackgroundColor3 = Color3.fromRGB(100, 200, 255)
+        godModeToggleButton.Text = "OFF"
+        
+        if godModeConnection then
+            godModeConnection:Disconnect()
+            godModeConnection = nil
+        end
+        
+        -- Reset humanoid states
+        if humanoid then
+            humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, true)
+            humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, true)
+            humanoid:SetStateEnabled(Enum.HumanoidStateType.Physics, true)
+        end
+    end
+end
+
+godModeToggleButton.MouseButton1Click:Connect(function()
+    -- God Mode is Premium Only
+    print("God Mode is Premium Only")
+end)
+
+-- ========================================
+-- SPINNING CONTROLLER
+-- ========================================
+local function toggleSpinning()
+    spinningActive = not spinningActive
+    
+    if spinningActive then
+        spinToggleButton.Text = "ON"
+        spinToggleButton.BackgroundColor3 = Color3.fromRGB(76, 175, 80)
+        spinToggleButton.UIStroke.Color = Color3.fromRGB(76, 175, 80)
+        
+        if humanoid then
+            for _, track in pairs(humanoid:GetPlayingAnimationTracks()) do
+                track:Stop()
+            end
+        end
+        
+        spinningConnection = RunService.Heartbeat:Connect(function()
+            if playerCharacter and playerCharacter.Parent and humanoidRootPart and humanoidRootPart.Parent then
+                humanoidRootPart.AssemblyAngularVelocity = Vector3.new(0, spinningSpeedValue, 0)
+                
+                if humanoid then
+                    for _, track in pairs(humanoid:GetPlayingAnimationTracks()) do
+                        track:Stop()
+                    end
+                end
+            end
+        end)
+    else
+        spinToggleButton.Text = "OFF"
+        spinToggleButton.BackgroundColor3 = Color3.fromRGB(255, 165, 0)
+        spinToggleButton.UIStroke.Color = Color3.fromRGB(255, 165, 0)
+        
+        if spinningConnection then
+            spinningConnection:Disconnect()
+            spinningConnection = nil
+            
+            if humanoidRootPart and humanoidRootPart.Parent then
+                humanoidRootPart.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+            end
+        end
+    end
+end
+
+spinToggleButton.MouseButton1Click:Connect(toggleSpinning)
+
+-- Spin Keybind
+spinKeybindButton.MouseButton1Click:Connect(function()
+    setKeybind("spin", spinKeybindButton)
+end)
+
+-- God Mode Keybind (PREMIUM ONLY)
+godModeKeybindButton.MouseButton1Click:Connect(function()
+    print("God Mode is Premium Only")
+end)
+
+-- ========================================
+-- DESYNC SYSTEM (WORKS IN FREE VERSION)
+-- ========================================
+local FFlags = {
+    GameNetPVHeaderRotationalVelocityZeroCutoffExponent = -5000,
+    LargeReplicatorWrite5 = true,
+    LargeReplicatorEnabled9 = true,
+    AngularVelociryLimit = 360,
+    TimestepArbiterVelocityCriteriaThresholdTwoDt = 2147483646,
+    S2PhysicsSenderRate = 15000,
+    DisableDPIScale = true,
+    MaxDataPacketPerSend = 2147483647,
+    PhysicsSenderMaxBandwidthBps = 20000,
+    TimestepArbiterHumanoidLinearVelThreshold = 21,
+    MaxMissedWorldStepsRemembered = -2147483648,
+    PlayerHumanoidPropertyUpdateRestrict = true,
+    SimDefaultHumanoidTimestepMultiplier = 0,
+    StreamJobNOUVolumeLengthCap = 2147483647,
+    DebugSendDistInSteps = -2147483648,
+    GameNetDontSendRedundantNumTimes = 1,
+    CheckPVLinearVelocityIntegrateVsDeltaPositionThresholdPercent = 1,
+    CheckPVDifferencesForInterpolationMinVelThresholdStudsPerSecHundredth = 1,
+    LargeReplicatorSerializeRead3 = true,
+    ReplicationFocusNouExtentsSizeCutoffForPauseStuds = 2147483647,
+    CheckPVCachedVelThresholdPercent = 10,
+    CheckPVDifferencesForInterpolationMinRotVelThresholdRadsPerSecHundredth = 1,
+    GameNetDontSendRedundantDeltaPositionMillionth = 1,
+    InterpolationFrameVelocityThresholdMillionth = 5,
+    StreamJobNOUVolumeCap = 2147483647,
+    InterpolationFrameRotVelocityThresholdMillionth = 5,
+    CheckPVCachedRotVelThresholdPercent = 10,
+    WorldStepMax = 30,
+    InterpolationFramePositionThresholdMillionth = 5,
+    TimestepArbiterHumanoidTurningVelThreshold = 1,
+    SimOwnedNOUCountThresholdMillionth = 2147483647,
+    GameNetPVHeaderLinearVelocityZeroCutoffExponent = -5000,
+    NextGenReplicatorEnabledWrite4 = true,
+    TimestepArbiterOmegaThou = 1073741823,
+    MaxAcceptableUpdateDelay = 1,
+    LargeReplicatorSerializeWrite4 = true
+}
+
+local defaultFFlags = {
+    GameNetPVHeaderRotationalVelocityZeroCutoffExponent = 8,
+    LargeReplicatorWrite5 = false,
+    LargeReplicatorEnabled9 = false,
+    AngularVelociryLimit = 180,
+    TimestepArbiterVelocityCriteriaThresholdTwoDt = 100,
+    S2PhysicsSenderRate = 60,
+    DisableDPIScale = false,
+    MaxDataPacketPerSend = 1024,
+    PhysicsSenderMaxBandwidthBps = 10000,
+    TimestepArbiterHumanoidLinearVelThreshold = 10,
+    MaxMissedWorldStepsRemembered = 10,
+    PlayerHumanoidPropertyUpdateRestrict = false,
+    SimDefaultHumanoidTimestepMultiplier = 1,
+    StreamJobNOUVolumeLengthCap = 1000,
+    DebugSendDistInSteps = 10,
+    GameNetDontSendRedundantNumTimes = 10,
+    CheckPVLinearVelocityIntegrateVsDeltaPositionThresholdPercent = 50,
+    CheckPVDifferencesForInterpolationMinVelThresholdStudsPerSecHundredth = 100,
+    LargeReplicatorSerializeRead3 = false,
+    ReplicationFocusNouExtentsSizeCutoffForPauseStuds = 100,
+    CheckPVCachedVelThresholdPercent = 50,
+    CheckPVDifferencesForInterpolationMinRotVelThresholdRadsPerSecHundredth = 100,
+    GameNetDontSendRedundantDeltaPositionMillionth = 100,
+    InterpolationFrameVelocityThresholdMillionth = 100,
+    StreamJobNOUVolumeCap = 1000,
+    InterpolationFrameRotVelocityThresholdMillionth = 100,
+    CheckPVCachedRotVelThresholdPercent = 50,
+    WorldStepMax = 60,
+    InterpolationFramePositionThresholdMillionth = 100,
+    TimestepArbiterHumanoidTurningVelThreshold = 10,
+    SimOwnedNOUCountThresholdMillionth = 1000,
+    GameNetPVHeaderLinearVelocityZeroCutoffExponent = 8,
+    NextGenReplicatorEnabledWrite4 = false,
+    TimestepArbiterOmegaThou = 1000,
+    MaxAcceptableUpdateDelay = 10,
+    LargeReplicatorSerializeWrite4 = false
+}
+
+local desyncActive = false
+local desyncFirstActivation = true
+
+local function applyFFlags(flags)
+    for name, value in pairs(flags) do
+        pcall(function()
+            setfflag(tostring(name), tostring(value))
+        end)
+    end
+end
+
+local function respawnCharacter(plr)
+    local char = plr.Character
+    if char then
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if hum then
+            hum:ChangeState(Enum.HumanoidStateType.Dead)
+        end
+        char:ClearAllChildren()
+        local newChar = Instance.new("Model")
+        newChar.Parent = workspace
+        plr.Character = newChar
+        task.wait()
+        plr.Character = char
+        newChar:Destroy()
+    end
+end
+
+-- Server Location Indicator
+local serverLocationPart = Instance.new("Part")
+serverLocationPart.Shape = Enum.PartType.Ball
+serverLocationPart.Size = Vector3.new(6, 6, 6)
+serverLocationPart.Transparency = 1
+serverLocationPart.CanCollide = false
+serverLocationPart.CanTouch = false
+serverLocationPart.CFrame = localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart") and localPlayer.Character.HumanoidRootPart.CFrame + Vector3.new(0, 15, 0) or CFrame.new(0, 5, 0)
+serverLocationPart.Color = Color3.fromRGB(0, 255, 100)
+serverLocationPart.Material = Enum.Material.Neon
+serverLocationPart.Parent = workspace
+
+local desyncLight = Instance.new("PointLight")
+desyncLight.Brightness = 0
+desyncLight.Range = 30
+desyncLight.Color = Color3.fromRGB(0, 255, 100)
+desyncLight.Parent = serverLocationPart
+
+local desyncHeartbeatConnection
+desyncHeartbeatConnection = RunService.Heartbeat:Connect(function()
+    if localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        serverLocationPart.Position = localPlayer.Character.HumanoidRootPart.Position + Vector3.new(0, 15, 0)
+        if serverLocationPart.Parent ~= workspace then
+            serverLocationPart.Parent = workspace
+        end
+    end
+end)
+
+localPlayer.CharacterAdded:Connect(function(newChar)
+    serverLocationPart.Parent = workspace
+end)
+
+local function toggleDesync()
+    desyncActive = not desyncActive
+    
+    if desyncActive then
+        applyFFlags(FFlags)
+        if desyncFirstActivation then
+            respawnCharacter(localPlayer)
+            desyncFirstActivation = false
+        end
+        desyncToggleButton.Text = "ON"
+        desyncToggleButton.BackgroundColor3 = ColorTheme.activeGreen
+        desyncToggleButton.UIStroke.Color = ColorTheme.activeGreen
+        serverLocationPart.Transparency = 0.2
+        desyncLight.Brightness = 3
+    else
+        applyFFlags(defaultFFlags)
+        desyncToggleButton.Text = "OFF"
+        desyncToggleButton.BackgroundColor3 = Color3.fromRGB(255, 140, 0)
+        desyncToggleButton.UIStroke.Color = Color3.fromRGB(255, 140, 0)
+        serverLocationPart.Transparency = 1
+        desyncLight.Brightness = 0
+    end
+end
+
+desyncToggleButton.MouseButton1Click:Connect(function()
+    -- Desync disabled - do nothing
+    print("Desync is disabled")
+end)
+
+-- Desync Keybind
+desyncKeybindButton.MouseButton1Click:Connect(function()
+    -- Desync disabled - do nothing
+    print("Desync is disabled")
+end)
+
+-- ========================================
+-- OPEN/CLOSE TOGGLE
+-- ========================================
+local isOpen = true
+
+local function closeFrame()
+    if not isOpen then return end
+    isOpen = false
+    
+    local startPos = mainContainer.Position
+    
+    mainContainer.Visible = false
+    collapsedButtonsBackground.Visible = true
+    collapsedButton.Visible = true
+    toggleAllLabel.Visible = true
+    toggleAllButtonCollapsed.Visible = true
+    toggleAllKeybindButton.Visible = true
+    settingsButtonCollapsed.Visible = true
+    collapsedButtonsBackground.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset - 112, startPos.Y.Scale, startPos.Y.Offset)
+end
+
+local function openFrame()
+    if isOpen then return end
+    isOpen = true
+    
+    local startPos = collapsedButtonsBackground.Position
+    mainContainer.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + 112, startPos.Y.Scale, startPos.Y.Offset)
+    mainContainer.Visible = true
+    collapsedButtonsBackground.Visible = false
+    collapsedButton.Visible = false
+    toggleAllLabel.Visible = false
+    toggleAllButtonCollapsed.Visible = false
+    toggleAllKeybindButton.Visible = false
+    settingsButtonCollapsed.Visible = false
+    settingsMenuFrame.Visible = false
+end
+
+-- Hover effects
+closeButton.MouseEnter:Connect(function()
+    closeButton.BackgroundTransparency = 0.1
+    closeButton.UIStroke.Transparency = 0.1
+end)
+
+closeButton.MouseLeave:Connect(function()
+    closeButton.BackgroundTransparency = 0.3
+    closeButton.UIStroke.Transparency = 0.4
+end)
+
+closeButton.MouseButton1Click:Connect(closeFrame)
+
+collapsedButton.MouseButton1Click:Connect(openFrame)
+
+-- Toggle All Button (when frame is closed) - Distance-based click detection
+local toggleAllDragStart = nil
+local toggleAllStartPos = nil
+
+toggleAllButtonCollapsed.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        toggleAllDragStart = UserInputService:GetMouseLocation()
+        toggleAllStartPos = toggleAllButtonCollapsed.AbsolutePosition
+    end
+end)
+
+toggleAllButtonCollapsed.InputEnded:Connect(function(input)
+    if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) and toggleAllDragStart then
+        local currentPos = UserInputService:GetMouseLocation()
+        local distance = math.sqrt(
+            math.pow(currentPos.X - toggleAllDragStart.X, 2) +
+            math.pow(currentPos.Y - toggleAllDragStart.Y, 2)
+        )
+        
+        -- Only trigger if dragged less than 5 pixels (click, not drag)
+        if distance < 5 then
+            -- Check if all selected systems are currently active
+            local allSelectedActive = true
+            if toggleAllSettings.speed then allSelectedActive = allSelectedActive and speedControllerActive end
+            if toggleAllSettings.steal then allSelectedActive = allSelectedActive and stealModeActive end
+            if toggleAllSettings.jump then allSelectedActive = allSelectedActive and jumpControllerActive end
+            if toggleAllSettings.spin then allSelectedActive = allSelectedActive and spinningActive end
+            if toggleAllSettings.godMode then allSelectedActive = allSelectedActive and godModeActive end
+            if toggleAllSettings.desync then allSelectedActive = allSelectedActive and desyncActive end
+            
+            if allSelectedActive then
+                -- Turn everything OFF (but only if selected in settings)
+                if toggleAllSettings.speed and speedControllerActive then toggleSpeedController() end
+                if toggleAllSettings.steal and stealModeActive then toggleStealMode() end
+                if toggleAllSettings.jump and jumpControllerActive then toggleJumpController() end
+                if toggleAllSettings.spin and spinningActive then toggleSpinning() end
+                if toggleAllSettings.godMode and godModeActive then toggleGodMode() end
+                if toggleAllSettings.desync and desyncActive then toggleDesync() end
+            else
+                -- Turn everything ON (but only if selected in settings)
+                if toggleAllSettings.speed and not speedControllerActive then toggleSpeedController() end
+                if toggleAllSettings.steal and not stealModeActive then toggleStealMode() end
+                if toggleAllSettings.jump and not jumpControllerActive then toggleJumpController() end
+                if toggleAllSettings.spin and not spinningActive then toggleSpinning() end
+                if toggleAllSettings.godMode and not godModeActive then toggleGodMode() end
+                if toggleAllSettings.desync and not desyncActive then toggleDesync() end
+            end
+            
+            -- Update button color based on new state
+            local newAllSelectedActive = true
+            if toggleAllSettings.speed then newAllSelectedActive = newAllSelectedActive and speedControllerActive end
+            if toggleAllSettings.steal then newAllSelectedActive = newAllSelectedActive and stealModeActive end
+            if toggleAllSettings.jump then newAllSelectedActive = newAllSelectedActive and jumpControllerActive end
+            if toggleAllSettings.spin then newAllSelectedActive = newAllSelectedActive and spinningActive end
+            if toggleAllSettings.godMode then newAllSelectedActive = newAllSelectedActive and godModeActive end
+            if toggleAllSettings.desync then newAllSelectedActive = newAllSelectedActive and desyncActive end
+            
+            if newAllSelectedActive then
+                toggleAllButtonCollapsed.BackgroundColor3 = ColorTheme.activeGreen
+                toggleAllButtonCollapsed.UIStroke.Color = Color3.fromRGB(0, 100, 50)
+            else
+                toggleAllButtonCollapsed.BackgroundColor3 = ColorTheme.inactiveRed
+                toggleAllButtonCollapsed.UIStroke.Color = Color3.fromRGB(180, 40, 40)
+            end
+        end
+        
+        toggleAllDragStart = nil
+        toggleAllStartPos = nil
+    end
+end)
+
+-- Toggle All Keybind
+toggleAllKeybindButton.MouseButton1Click:Connect(function()
+    setKeybind("toggleAll", toggleAllKeybindButton)
+end)
+
+-- Settings Button
+settingsButtonCollapsed.MouseButton1Click:Connect(function()
+    settingsMenuFrame.Visible = not settingsMenuFrame.Visible
+end)
+
+collapsedButton.MouseEnter:Connect(function()
+    if not isOpen then
+        collapsedButton.BackgroundTransparency = 0
+        collapsedButton.UIStroke.Transparency = 0.1
+    end
+end)
+
+collapsedButton.MouseLeave:Connect(function()
+    if not isOpen then
+        collapsedButton.BackgroundTransparency = 0.1
+        collapsedButton.UIStroke.Transparency = 0.3
+    end
+end)
+
+toggleAllButtonCollapsed.MouseEnter:Connect(function()
+    if not isOpen then
+        toggleAllButtonCollapsed.BackgroundTransparency = 0.1
+        toggleAllButtonCollapsed.UIStroke.Transparency = 0.2
+    end
+end)
+
+toggleAllButtonCollapsed.MouseLeave:Connect(function()
+    if not isOpen then
+        toggleAllButtonCollapsed.BackgroundTransparency = 0
+        toggleAllButtonCollapsed.UIStroke.Transparency = 0.4
+    end
+end)
+
+toggleAllKeybindButton.MouseEnter:Connect(function()
+    if not isOpen then
+        toggleAllKeybindButton.BackgroundTransparency = 0.1
+    end
+end)
+
+toggleAllKeybindButton.MouseLeave:Connect(function()
+    if not isOpen then
+        toggleAllKeybindButton.BackgroundTransparency = 0.3
+    end
+end)
+
+collapsedButton.MouseButton1Click:Connect(openFrame)
+local fpsUpdateTimer = 0
+local lastFpsValue = 60
+local lastPingValue = 0
+
+RunService.Heartbeat:Connect(function(deltaTime)
+    borderGradient.Rotation = (borderGradient.Rotation + 60 * deltaTime) % 360
+    collapsedBgGradient.Rotation = (collapsedBgGradient.Rotation + 60 * deltaTime) % 360
+    settingsStrokeGradient.Rotation = (settingsStrokeGradient.Rotation + 60 * deltaTime) % 360
+    
+    -- Animate top bar gradient
+    if topBarGradient then
+        topBarGradient.Rotation = (topBarGradient.Rotation + 60 * deltaTime) % 360
+    end
+    
+    -- Update FPS and Ping every 1 second
+    fpsUpdateTimer = fpsUpdateTimer + deltaTime
+    if fpsUpdateTimer >= 1 then
+        fpsUpdateTimer = 0
+        lastFpsValue = math.round(1 / deltaTime)
+        fpsLabel.Text = "FPS: " .. lastFpsValue
+        
+        -- Update Ping every 1 second
+        lastPingValue = math.max(0, math.random(10, 80))
+        pingLabel.Text = "Ping: " .. lastPingValue .. "ms"
+    end
+    
+    -- Animate premium label glow with gradient rotation and pulsing transparency
+    if premiumGradient then
+        premiumGradient.Rotation = (premiumGradient.Rotation + 45 * deltaTime) % 360
+    end
+    local glowIntensity = 0.5 + 0.5 * math.sin(tick() * 2.5)
+    premiumLabel.TextTransparency = 0.2 - (glowIntensity * 0.15)
+    
+    -- Animate free label (BASIC ACTIVE) glow with gradient rotation and pulsing transparency
+    if FreeGradient then
+        FreeGradient.Rotation = (FreeGradient.Rotation + 45 * deltaTime) % 360
+    end
+    FreeLabel.TextTransparency = 0.2 - (glowIntensity * 0.15)
+end)
+
+-- ========================================
+-- KEYBIND ACTIVATION SYSTEM
+-- ========================================
+UserInputService.InputEnded:Connect(function(input, gameProcessed)
+    if justSetKeybind then
+        justSetKeybind = false
+        return
+    end
+    
+    if not waitingForKey.active and not gameProcessed then
+        -- Check Speed keybind
+        if keybinds.speed and (input.KeyCode == keybinds.speed or input.UserInputType == keybinds.speed) then
+            toggleSpeedController()
+        end
+        -- Check Steal keybind
+        if keybinds.steal and (input.KeyCode == keybinds.steal or input.UserInputType == keybinds.steal) then
+            toggleStealMode()
+        end
+        -- Check Jump keybind
+        if keybinds.jump and (input.KeyCode == keybinds.jump or input.UserInputType == keybinds.jump) then
+            toggleJumpController()
+        end
+        -- Check Spin keybind
+        if keybinds.spin and (input.KeyCode == keybinds.spin or input.UserInputType == keybinds.spin) then
+            toggleSpinning()
+        end
+        -- Check Desync keybind (DISABLED)
+        if keybinds.desync and (input.KeyCode == keybinds.desync or input.UserInputType == keybinds.desync) then
+            -- Desync is disabled - do nothing
+        end
+        -- Check Toggle All keybind
+        if keybinds.toggleAll and (input.KeyCode == keybinds.toggleAll or input.UserInputType == keybinds.toggleAll) then
+            -- Check if all selected systems are currently active
+            local allSelectedActive = true
+            if toggleAllSettings.speed then allSelectedActive = allSelectedActive and speedControllerActive end
+            if toggleAllSettings.steal then allSelectedActive = allSelectedActive and stealModeActive end
+            if toggleAllSettings.jump then allSelectedActive = allSelectedActive and jumpControllerActive end
+            if toggleAllSettings.spin then allSelectedActive = allSelectedActive and spinningActive end
+            if toggleAllSettings.desync then allSelectedActive = allSelectedActive and desyncActive end
+            
+            if allSelectedActive then
+                if toggleAllSettings.speed and speedControllerActive then toggleSpeedController() end
+                if toggleAllSettings.steal and stealModeActive then toggleStealMode() end
+                if toggleAllSettings.jump and jumpControllerActive then toggleJumpController() end
+                if toggleAllSettings.spin and spinningActive then toggleSpinning() end
+                if toggleAllSettings.desync and desyncActive then toggleDesync() end
+            else
+                if toggleAllSettings.speed and not speedControllerActive then toggleSpeedController() end
+                if toggleAllSettings.steal and not stealModeActive then toggleStealMode() end
+                if toggleAllSettings.jump and not jumpControllerActive then toggleJumpController() end
+                if toggleAllSettings.spin and not spinningActive then toggleSpinning() end
+                if toggleAllSettings.desync and not desyncActive then toggleDesync() end
+            end
+            
+            -- Update button color based on new state
+            local newAllSelectedActive = true
+            if toggleAllSettings.speed then newAllSelectedActive = newAllSelectedActive and speedControllerActive end
+            if toggleAllSettings.steal then newAllSelectedActive = newAllSelectedActive and stealModeActive end
+            if toggleAllSettings.jump then newAllSelectedActive = newAllSelectedActive and jumpControllerActive end
+            if toggleAllSettings.spin then newAllSelectedActive = newAllSelectedActive and spinningActive end
+            if toggleAllSettings.godMode then newAllSelectedActive = newAllSelectedActive and godModeActive end
+            if toggleAllSettings.desync then newAllSelectedActive = newAllSelectedActive and desyncActive end
+            
+            if newAllSelectedActive then
+                toggleAllButtonCollapsed.BackgroundColor3 = ColorTheme.activeGreen
+                toggleAllButtonCollapsed.UIStroke.Color = Color3.fromRGB(0, 100, 50)
+            else
+                toggleAllButtonCollapsed.BackgroundColor3 = ColorTheme.inactiveRed
+                toggleAllButtonCollapsed.UIStroke.Color = Color3.fromRGB(180, 40, 40)
+            end
+        end
+    end
+end)
+
+-- Initialize keybind displays with default keybinds
+initializeKeybindDisplay()
+-- ========================================
+-- ESP SYSTEM
+-- ========================================
+local espConnections = {}
+local espEnabled = true
+
+local function createESP(plr)
+    if plr == localPlayer then return end
+    if not plr.Character then return end
+    if plr.Character:FindFirstChild("ESP_Box_Head") then return end
+    
+    local char = plr.Character
+    local head = char:FindFirstChild("Head")
+    
+    if not head then return end
+    
+    -- Create ESP boxes for all body parts
+    local bodyParts = char:GetChildren()
+    local espBoxes = {}
+    for _, part in ipairs(bodyParts) do
+        if part:IsA("BasePart") and not part:FindFirstChild("ESP_Box") then
+            local hitbox = Instance.new("BoxHandleAdornment")
+            hitbox.Name = "ESP_Box"
+            hitbox.Adornee = part
+            hitbox.Color3 = Color3.fromRGB(128, 0, 128)
+            hitbox.Transparency = 0.5
+            hitbox.ZIndex = 10
+            hitbox.AlwaysOnTop = true
+            hitbox.Parent = part
+            table.insert(espBoxes, hitbox)
+        end
+    end
+    
+    local billboard = Instance.new("BillboardGui")
+    billboard.Name = "ESP_Name"
+    billboard.Adornee = head
+    billboard.Size = UDim2.new(0, 200, 0, 50)
+    billboard.StudsOffset = Vector3.new(0, 3, 0)
+    billboard.AlwaysOnTop = true
+    billboard.Parent = char
+    
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, 0, 1, 0)
+    label.BackgroundTransparency = 1
+    label.Text = plr.DisplayName or plr.Name
+    label.TextColor3 = Color3.fromRGB(255, 0, 255)
+    label.Font = Enum.Font.Arcade
+    label.TextScaled = true
+    label.TextStrokeTransparency = 0.7
+    label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    label.Parent = billboard
+    
+    -- RGB animation for boxes and name - slow gradient rotation
+    local hue = 0
+    local rgbConnection
+    rgbConnection = RunService.RenderStepped:Connect(function()
+        if not label or not label.Parent then
+            if rgbConnection then rgbConnection:Disconnect() end
+            return
+        end
+        hue = (hue + 0.0005) % 1
+        local rgbColor = Color3.fromHSV(hue, 1, 1)
+        label.TextColor3 = rgbColor
+        
+        -- Update all ESP boxes to same color
+        for _, box in ipairs(espBoxes) do
+            if box and box.Parent then
+                box.Color3 = rgbColor
+            end
+        end
+    end)
+end
+
+local function removeESP(plr)
+    if not plr.Character then return end
+    local nameGui = plr.Character:FindFirstChild("ESP_Name")
+    if nameGui then nameGui:Destroy() end
+    
+    -- Remove ESP boxes from all parts
+    for _, part in ipairs(plr.Character:GetChildren()) do
+        if part:IsA("BasePart") then
+            local box = part:FindFirstChild("ESP_Box")
+            if box then box:Destroy() end
+        end
+    end
+end
+
+local function enableESP()
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= localPlayer then
+            if plr.Character then
+                createESP(plr)
+            end
+            local conn = plr.CharacterAdded:Connect(function()
+                task.wait(0.1)
+                if espEnabled then
+                    createESP(plr)
+                end
+            end)
+            table.insert(espConnections, conn)
+        end
+    end
+    
+    local playerAddedConn = Players.PlayerAdded:Connect(function(plr)
+        if plr == localPlayer then return end
+        local charAddedConn = plr.CharacterAdded:Connect(function()
+            task.wait(0.1)
+            if espEnabled then
+                createESP(plr)
+            end
+        end)
+        table.insert(espConnections, charAddedConn)
+    end)
+    table.insert(espConnections, playerAddedConn)
+end
+
+local function disableESP()
+    for _, plr in ipairs(Players:GetPlayers()) do
+        removeESP(plr)
+    end
+    for _, conn in ipairs(espConnections) do
+        if conn and conn.Connected then
+            conn:Disconnect()
+        end
+    end
+    espConnections = {}
+end
+
+localPlayer.CharacterAdded:Connect(function()
+    task.wait(0.1)
+    if espEnabled then
+        enableESP()
+    end
+end)
+
+enableESP()
